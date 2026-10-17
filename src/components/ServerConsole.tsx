@@ -1,8 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useMock } from '../data/MockProvider'
 import { Box, Paper } from '@mui/material'
-import { Terminal } from '@xterm/xterm'
-import { FitAddon } from '@xterm/addon-fit'
+import type { Terminal } from '@xterm/xterm'
 import '@xterm/xterm/css/xterm.css'
 import type { ServerProps } from '../types'
 
@@ -18,16 +17,21 @@ interface ConsoleSession {
 }
 
 export default function ServerConsole({ server }: ServerProps) {
-  const { updateServer } = useMock()
+  const { sendCommand } = useMock()
   const containerRef = useRef<HTMLDivElement>(null)
   const sessionRef = useRef<ConsoleSession | null>(null)
-  const latestRef = useRef({ server, updateServer })
+  const latestRef = useRef({ server, sendCommand })
 
   useEffect(() => {
-    latestRef.current = { server, updateServer }
-  }, [server, updateServer])
+    latestRef.current = { server, sendCommand }
+  }, [server, sendCommand])
 
   useEffect(() => {
+    let cancelled = false
+    let dispose: (() => void) | undefined
+    void (async () => {
+    const [{ Terminal }, { FitAddon }] = await Promise.all([import('@xterm/xterm'), import('@xterm/addon-fit')])
+    if (cancelled) return
     const terminal = new Terminal({
       cursorBlink: true,
       cursorStyle: 'bar',
@@ -46,6 +50,8 @@ export default function ServerConsole({ server }: ServerProps) {
     terminal.open(containerRef.current!)
     const session: ConsoleSession = { terminal, line: '', cursor: 0, history: [], historyIndex: 0, draft: '', logCount: 0, draw: () => {} }
     sessionRef.current = session
+    latestRef.current.server.logs.forEach((line) => terminal.writeln(line))
+    session.logCount = latestRef.current.server.logs.length
     // Keep editable input on one terminal row, scrolling long commands horizontally.
     const draw = () => {
       const width = Math.max(1, terminal.cols - 3)
@@ -71,9 +77,7 @@ export default function ServerConsole({ server }: ServerProps) {
         session.cursor = 0
         session.draft = ''
         const current = latestRef.current
-        current.updateServer(current.server.id, {
-          logs: [...current.server.logs, `> ${command}`, '[MOCK] Command received; no backend connected.'],
-        })
+        void current.sendCommand(current.server.id, command).catch(() => terminal.writeln('\r\nCommand failed.'))
       } else if (data === '\x03') {
         terminal.write('^C\r\n')
         session.line = ''
@@ -109,12 +113,14 @@ export default function ServerConsole({ server }: ServerProps) {
     const observer = new ResizeObserver(resize)
     observer.observe(containerRef.current!)
 
-    return () => {
+    dispose = () => {
       observer.disconnect()
       input.dispose()
       sessionRef.current = null
       terminal.dispose()
     }
+    })()
+    return () => { cancelled = true; dispose?.() }
   }, [server.id])
 
   useEffect(() => {

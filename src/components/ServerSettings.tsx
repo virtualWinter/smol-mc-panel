@@ -1,12 +1,11 @@
 import { useState } from 'react'
 import { Box, Button, FormControlLabel, MenuItem, Paper, Stack, Switch, TextField, Typography } from '@mui/material'
 import { useMock } from '../data/MockProvider'
-import { javaVersions } from '../data/mockData'
 import type { ServerProps, Server } from '../types'
 import type { TextFieldProps } from '@mui/material'
 
 function SettingsForm({ server }: ServerProps) {
-  const { updateServer } = useMock()
+  const { saveSettings, javaVersions } = useMock()
   const [values, setValues] = useState(server)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
@@ -21,18 +20,18 @@ function SettingsForm({ server }: ServerProps) {
   const columns = { display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }
 
   return (
-    <Stack component="form" spacing={2} onSubmit={(event) => {
+    <Stack component="form" spacing={2} onSubmit={async (event) => {
       event.preventDefault()
       if (Number(values.minMemory) > Number(values.maxMemory)) {
         setError('Initial memory cannot exceed maximum memory.')
         return
       }
-      updateServer(server.id, {
+      try { await saveSettings(server.id, {
         ...values,
         name: values.name.trim(), address: values.address.trim(),
         minMemory: Number(values.minMemory), maxMemory: Number(values.maxMemory),
       })
-      setSaved(true)
+      setSaved(true) } catch (error) { setError(String(error)) }
     }}>
       <Paper variant="outlined" sx={{ p: 2 }}>
         <Stack spacing={2}>
@@ -66,7 +65,7 @@ function SettingsForm({ server }: ServerProps) {
       <Stack direction="row" spacing={2} sx={{ alignItems: 'center' }}>
         <Button type="submit" variant="contained">Save changes</Button>
         {error && <Typography variant="body2" color="error" role="alert">{error}</Typography>}
-        {saved && <Typography variant="body2" color="text.secondary" role="status">Saved for this session.</Typography>}
+        {saved && <Typography variant="body2" color="text.secondary" role="status">Saved.</Typography>}
       </Stack>
     </Stack>
   )

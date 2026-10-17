@@ -11,7 +11,7 @@ import type { ServerProps, ServerFile } from '../types'
 
 function FileManager({ server }: ServerProps) {
   const [selected, setSelected] = useState<ServerFile | null>(null)
-  const { entries, setEntries, notice, setNotice, target, dropProps, dragProps } = useFileManager(server.id)
+  const { entries, saveFile, notice, setNotice, target, dropProps, dragProps } = useFileManager(server.id)
   const [path, setPath] = useState<string[]>([])
   const [search, setSearch] = useState('')
   const [view, setView] = useState<'list' | 'grid'>('list')
@@ -64,7 +64,7 @@ function FileManager({ server }: ServerProps) {
         {files.length === 0 && <Box sx={{ py: 5, textAlign: 'center' }}><Typography variant="body2" color="text.secondary">{search ? 'No matching files' : 'Empty directory'}</Typography>{search && <Button onClick={() => setSearch('')}>Clear search</Button>}</Box>}
       </Paper>
       {notice && <Typography variant="body2" color="text.secondary" role="status">{notice}</Typography>}
-      {selected && <FileEditor key={fileKey} name={selected.name} content={selectedEntry?.content ?? ''} onClose={() => setSelected(null)} onSave={(content) => { setEntries((current) => current.map((file) => file.path === fileKey ? { ...file, content, size: `${new TextEncoder().encode(content).length} B`, modified: new Date().toLocaleString() } : file)); setSelected(null) }} />}
+      {selected && <FileEditor key={fileKey} name={selected.name} content={selectedEntry?.content ?? ''} onClose={() => setSelected(null)} onSave={async (content) => { await saveFile(server.id, fileKey, content); setSelected(null) }} />}
     </Stack>
   )
 }

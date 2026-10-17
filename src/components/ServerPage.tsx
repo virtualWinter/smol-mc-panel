@@ -1,6 +1,8 @@
-import { Box, Button, Stack, Typography } from '@mui/material'
+'use client'
+
+import { useState } from 'react'
+import { Alert, Box, Button, Stack, Typography } from '@mui/material'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
-import { Link, useParams } from 'react-router-dom'
 import { useMock } from '../data/MockProvider'
 import ServerStats from './ServerStats'
 import ServerConsole from './ServerConsole'
@@ -10,18 +12,16 @@ import ServerSettings from './ServerSettings'
 import ServerGraphs from './ServerGraphs'
 import ServerHeader from './ServerHeader'
 
-export default function ServerPage() {
-  const { serverId, '*': page = '' } = useParams()
-  const { servers, updateServer } = useMock()
+export default function ServerPage({ serverId, page }: { serverId: string; page: string }) {
+  const { servers, powerServer } = useMock()
+  const [error, setError] = useState('')
   const server = servers.find((item) => item.id === serverId)
-  const power = (action: 'Start' | 'Stop' | 'Restart') => server && updateServer(server.id, {
-    status: action === 'Stop' ? 'Offline' : 'Online',
-    logs: [...server.logs, `[MOCK] ${action} requested.`, `[MOCK] Server ${action === 'Stop' ? 'stopped' : 'started'}.`],
-  })
+  const power = (action: 'Start' | 'Stop' | 'Restart') => { setError(''); void powerServer(serverId, action).catch((error: unknown) => setError(String(error))) }
 
   return (
     <Stack spacing={3}>
-      <Button component={Link} to="/" color="inherit" size="small" startIcon={<ArrowBackIcon />} sx={{ alignSelf: 'flex-start', color: 'text.secondary' }}>Network</Button>
+      <Button href="/" color="inherit" size="small" startIcon={<ArrowBackIcon />} sx={{ alignSelf: 'flex-start', color: 'text.secondary' }}>Network</Button>
+      {error && <Alert severity="error">{error}</Alert>}
       {!server ? <Typography component="h1" variant="h4">Server not found</Typography> : (
         <>
           <ServerHeader server={server} page={page} />

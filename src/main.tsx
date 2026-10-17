@@ -1,10 +1,18 @@
 'use client'
 
-import { lazy, StrictMode, Suspense, useSyncExternalStore } from 'react'
-import { CssBaseline, ThemeProvider, createTheme } from '@mui/material'
+import { StrictMode } from 'react'
+import type { ReactNode } from 'react'
+import { Alert, Container, CssBaseline, ThemeProvider, createTheme } from '@mui/material'
 import './index.css'
-const App = lazy(() => import('./App'))
-const subscribe = () => () => {}
+import { MockProvider } from './data/MockProvider'
+import type { PanelState } from './types'
+import { Component } from 'react'
+
+class PanelErrorBoundary extends Component<{ children: ReactNode }, { error: boolean }> {
+  state = { error: false }
+  static getDerivedStateFromError() { return { error: true } }
+  render() { return this.state.error ? <Alert severity="error">Could not render the panel. Reload to try again.</Alert> : this.props.children }
+}
 
 const theme = createTheme({
   palette: { mode: 'dark' },
@@ -19,14 +27,14 @@ const theme = createTheme({
   },
 })
 
-export default function Panel() {
-  const mounted = useSyncExternalStore(subscribe, () => true, () => false)
-  if (!mounted) return null
+export default function Panel({ children, state }: { children: ReactNode; state: PanelState }) {
   return (
   <StrictMode>
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Suspense fallback={null}><App /></Suspense>
+      <PanelErrorBoundary><MockProvider state={state}>
+        <Container maxWidth="lg" sx={{ py: { xs: 3, sm: 5 }, px: { xs: 2, sm: 4 } }}>{children}</Container>
+      </MockProvider></PanelErrorBoundary>
     </ThemeProvider>
   </StrictMode>
   )

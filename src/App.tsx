@@ -1,19 +1,13 @@
-import { Container } from '@mui/material'
+import Panel from './main'
 import ServerOverview from './components/ServerOverview'
-import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import ServerPage from './components/ServerPage'
-import { MockProvider } from './data/MockProvider'
+import { snapshot } from './server/store'
 
-export default function App() {
+export default function App({ url }: { url: string }) {
+  const path = new URL(url).pathname.split('/').filter(Boolean)
   return (
-    <MockProvider><BrowserRouter>
-      <Container maxWidth="lg" sx={{ py: { xs: 3, sm: 5 }, px: { xs: 2, sm: 4 } }}>
-        <Routes>
-          <Route path="/" element={<ServerOverview />} />
-          <Route path="/:serverId/*" element={<ServerPage />} />
-          <Route path="*" element={<ServerPage />} />
-        </Routes>
-      </Container>
-    </BrowserRouter></MockProvider>
+    <Panel state={snapshot()}>
+      {path.length === 0 ? <ServerOverview /> : <ServerPage key={path[0]} serverId={path[0]} page={path.slice(1).join('/')} />}
+    </Panel>
   )
 }

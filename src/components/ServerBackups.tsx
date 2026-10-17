@@ -1,14 +1,18 @@
 import { useState } from 'react'
 import { Button, Paper, Stack, Typography } from '@mui/material'
-import { serverBackups } from '../data/mockData'
+import { useMock } from '../data/MockProvider'
 
 import type { ServerProps } from '../types'
 
 export default function ServerBackups({ server }: ServerProps) {
-  const [backups, setBackups] = useState(serverBackups[server.id] ?? [])
+  const { backups: allBackups, createBackup, deleteBackup } = useMock()
+  const backups = allBackups[server.id] ?? []
+  const [error, setError] = useState('')
+  const run = (operation: Promise<void>) => { setError(''); void operation.catch((error: unknown) => setError(String(error))) }
   return (
     <Stack spacing={2}>
-      <Button variant="outlined" sx={{ alignSelf: 'flex-start' }} onClick={() => setBackups([...backups, { id: crypto.randomUUID(), name: 'Manual backup', created: new Date().toISOString(), size: '0 B (mock)' }])}>Create backup</Button>
+      <Button variant="outlined" sx={{ alignSelf: 'flex-start' }} onClick={() => run(createBackup(server.id))}>Create backup</Button>
+      {error && <Typography color="error" role="alert">{error}</Typography>}
       {backups.length === 0 ? <Paper variant="outlined" sx={{ p: 4, textAlign: 'center' }}><Typography color="text.secondary">No backups</Typography></Paper> : backups.map((backup) => (
         <Paper key={backup.id} variant="outlined" sx={{ p: 2 }}>
           <Stack direction="row" sx={{ justifyContent: 'space-between' }} spacing={2}>
@@ -17,7 +21,7 @@ export default function ServerBackups({ server }: ServerProps) {
               <Typography variant="caption" color="text.secondary">{backup.created}</Typography>
             </Stack>
             <Typography variant="body2" color="text.secondary">{backup.size}</Typography>
-            <Button color="error" size="small" onClick={() => setBackups(backups.filter((item) => item.id !== backup.id))}>Delete</Button>
+            <Button color="error" size="small" onClick={() => run(deleteBackup(server.id, backup.id))}>Delete</Button>
           </Stack>
         </Paper>
       ))}

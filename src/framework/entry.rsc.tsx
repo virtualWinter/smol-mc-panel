@@ -1,6 +1,6 @@
 import { createTemporaryReferenceSet, decodeReply, loadServerAction, renderToReadableStream } from '@vitejs/plugin-rsc/rsc/server'
 import type { ReactNode } from 'react'
-import Panel from '../main'
+import App from '../App'
 
 export interface RscPayload {
   root: ReactNode
@@ -21,8 +21,25 @@ async function handleRequest(request: Request): Promise<Response> {
     const length = Number(request.headers.get('content-length'))
     if (length > 1024 * 1024) return new Response('Request too large', { status: 413 })
     try {
+      const chunks: Uint8Array[] = []
+      let size = 0
+      const reader = request.body?.getReader()
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          size += value.byteLength
+          if (size > 1024 * 1024) { await reader.cancel(); return new Response('Request too large', { status: 413 }) }
+          chunks.push(value)
+        }
+      }
+      const bytes = new Uint8Array(size)
+      let offset = 0
+      for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length }
+      const contentType = request.headers.get('content-type') ?? 'text/plain'
+      const boundedBody = new Response(bytes, { headers: { 'Content-Type': contentType } })
       temporaryReferences = createTemporaryReferenceSet()
-      const body = request.headers.get('content-type')?.startsWith('multipart/form-data') ? await request.formData() : await request.text()
+      const body = contentType.startsWith('multipart/form-data') ? await boundedBody.formData() : await boundedBody.text()
       const args = await decodeReply(body, { temporaryReferences })
       const action = await loadServerAction(actionId)
       result = { ok: true, data: await action(...args) }
@@ -31,7 +48,7 @@ async function handleRequest(request: Request): Promise<Response> {
       result = { ok: false, data: 'Server operation failed.' }
     }
   }
-  const root = <html lang="en"><head><meta charSet="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><title>smol-mc-panel</title></head><body style={{ margin: 0, background: '#121212', color: '#fff' }}><Panel /></body></html>
+  const root = <html lang="en"><head><meta charSet="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><title>smol-mc-panel</title></head><body style={{ margin: 0, background: '#121212', color: '#fff' }}><App url={url.href} /></body></html>
   const stream = renderToReadableStream<RscPayload>({ root, result }, { temporaryReferences })
   const headers = { 'Cache-Control': 'no-store', Vary: 'Accept, x-rsc-action' }
   if (request.headers.get('accept')?.includes('text/x-component') || actionId) {

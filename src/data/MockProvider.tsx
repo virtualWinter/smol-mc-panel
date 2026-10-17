@@ -1,52 +1,18 @@
-import { createContext, useContext, useEffect, useState } from 'react'
-import { networkServers } from './mockData'
+'use client'
+
+import { createContext, useContext } from 'react'
 import type { ReactNode } from 'react'
-import type { Server } from '../types'
-import { getServers } from '../server/actions'
+import type { PanelState } from '../types'
+import * as actions from '../server/actions'
 
-interface MockState {
-  servers: Server[]
-  updateServer: (id: string, changes: Partial<Server>) => void
-  reorderServers: (activeId: string, overId: string) => void
-}
-const MockContext = createContext<MockState | null>(null)
+const PanelContext = createContext<(PanelState & typeof actions) | null>(null)
 
-export function MockProvider({ children }: { children: ReactNode }) {
-  const [servers, setServers] = useState(() => {
-    try {
-      const order: unknown = JSON.parse(localStorage.getItem('server-order') ?? '[]')
-      if (Array.isArray(order) && order.every((id) => typeof id === 'string')) {
-        const rank = (id: string) => order.includes(id) ? order.indexOf(id) : order.length
-        return [...networkServers].sort((a, b) => rank(a.id) - rank(b.id))
-      }
-    } catch { /* Storage may be unavailable. */ }
-    return networkServers
-  })
-  useEffect(() => {
-    let cancelled = false
-    getServers().then((data) => {
-      if (!cancelled) setServers((current) => current.map((item) => data.find((server) => server.id === item.id) ?? item))
-    }).catch((error: unknown) => console.error('Could not load servers', error))
-    return () => { cancelled = true }
-  }, [])
-  useEffect(() => {
-    try { localStorage.setItem('server-order', JSON.stringify(servers.map((server) => server.id))) } catch { /* Keep ordering in memory if storage is unavailable. */ }
-  }, [servers])
-  const reorderServers = (activeId: string, overId: string) => setServers((current) => {
-    const from = current.findIndex((server) => server.id === activeId)
-    const to = current.findIndex((server) => server.id === overId)
-    if (from < 0 || to < 0 || from === to) return current
-    const next = [...current]
-    const [moved] = next.splice(from, 1)
-    next.splice(to, 0, moved)
-    return next
-  })
-  const updateServer: MockState['updateServer'] = (id, changes) => setServers((current) => current.map((server) => server.id === id ? { ...server, ...changes } : server))
-  return <MockContext.Provider value={{ servers, updateServer, reorderServers }}>{children}</MockContext.Provider>
+export function MockProvider({ children, state }: { children: ReactNode; state: PanelState }) {
+  return <PanelContext.Provider value={{ ...state, ...actions }}>{children}</PanelContext.Provider>
 }
 
 export function useMock() {
-  const context = useContext(MockContext)
-  if (!context) throw new Error('MockProvider is required')
+  const context = useContext(PanelContext)
+  if (!context) throw new Error('Panel provider is required')
   return context
 }

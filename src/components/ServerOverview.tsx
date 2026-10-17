@@ -1,3 +1,5 @@
+'use client'
+
 import { useState } from 'react'
 import { InputAdornment, Stack, TextField, Typography } from '@mui/material'
 import SearchIcon from '@mui/icons-material/Search'
@@ -29,7 +31,7 @@ export default function ServerOverview() {
           }}
         />
       </Stack>
-        <DndContext sensors={sensors} collisionDetection={closestCenter} modifiers={[restrictToVerticalAxis]} onDragEnd={({ active, over }) => { if (over) reorderServers(String(active.id), String(over.id)) }}>
+        <DndContext sensors={sensors} collisionDetection={closestCenter} modifiers={[restrictToVerticalAxis]} onDragEnd={({ active, over }) => { if (over) void reorderServers(String(active.id), String(over.id)).catch((error: unknown) => window.alert(String(error))) }}>
         <SortableContext items={filtered.map((server) => server.id)} strategy={verticalListSortingStrategy}>
         <Stack spacing={2}>
           {filtered.map((server) => <SortableServerRow key={server.id} server={server} />)}

@@ -1,3 +1,4 @@
+import 'server-only'
 import type { Server, ServerFile, Backup } from '../types'
 
 export const proxy = {

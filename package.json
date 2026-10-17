@@ -22,7 +22,6 @@
     "@xterm/xterm": "^6.0.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
-    "react-router-dom": "^7.18.4",
     "rsc-html-stream": "^0.0.8"
   },
   "devDependencies": {

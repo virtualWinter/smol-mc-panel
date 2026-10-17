@@ -1,9 +1,10 @@
 import { Box, Paper, Stack, Typography } from '@mui/material'
-import { metricHistory } from '../data/mockData'
+import { useMock } from '../data/MockProvider'
 import type { ServerProps } from '../types'
 
 export default function ServerGraphs({ server }: ServerProps) {
-  const history = metricHistory[server.id]
+  const { metrics } = useMock()
+  const history = metrics[server.id]
   if (!history) return null
   const graphs = [
     { label: 'CPU', values: history.cpu, max: 100, value: server.cpu },
