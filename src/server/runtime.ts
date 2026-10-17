@@ -1,4 +1,4 @@
-import { execFile, execFileSync, spawnSync } from 'node:child_process'
+import { execFile, execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -14,6 +14,7 @@ import { startupArgs } from './startup'
 import type { Backup, DownloadProgressState, MetricHistory, PanelState, Server } from '../types'
 import { acquireLock } from './lock'
 import { installedSource, reinstallJar } from './downloads'
+import { installJava, localJava } from './java'
 
 const execute = promisify(execFile)
 
@@ -29,7 +30,8 @@ export class NetworkRuntime {
   private lastTpsRequest = 0
   private backupJobs = new Set<string>()
   private writeJobs = new Set<string>()
-  private javaChecks = new Set<string>()
+  private javaExecutables = new Map<number, string>()
+  private javaJobs = new Map<number, { promise: Promise<string>; progress?: DownloadProgressState; listeners: Set<(progress: DownloadProgressState) => void> }>()
   private downloads: Record<string, DownloadProgressState> = {}
   private releaseLock: () => void
 
@@ -51,7 +53,7 @@ export class NetworkRuntime {
     for (const config of this.configs) serverDirectory(root, config.workingDirectory)
     provisionNetwork(root, this.configs)
     try { this.ticksPerSecond = Number(execFileSync('getconf', ['CLK_TCK'], { encoding: 'utf8', timeout: 1000 })) || 100 } catch { /* Linux normally uses 100 clock ticks. */ }
-    this.manager = new ProcessManager({ directory: (config) => this.directory(config.id), beforeStart: (config) => this.checkStart(config), onProcessChange: () => {
+    this.manager = new ProcessManager({ directory: (config) => this.directory(config.id), beforeStart: (config) => this.checkStart(config), executable: (config) => this.javaExecutables.get(Number(config.javaVersion.split(' ')[1]))!, onProcessChange: () => {
       const pids = Object.fromEntries([...this.manager.processes].filter(([, item]) => item.child?.pid).map(([id, item]) => [id, item.child!.pid]))
       writeFileSync(`${pidFile}.tmp`, JSON.stringify(pids), { mode: 0o600 })
       renameSync(`${pidFile}.tmp`, pidFile)
@@ -94,25 +96,48 @@ export class NetworkRuntime {
 
   private checkStart(config: ServerConfig) {
     if (this.backupJobs.has(config.id) || this.writeJobs.has(config.id)) throw new PanelError('Wait for active file operations or backups to finish.')
+    this.checkAssets(config)
+    if (!this.javaExecutables.has(Number(config.javaVersion.split(' ')[1]))) throw new PanelError('Java has not been prepared for this server.')
+  }
+
+  private checkAssets(config: ServerConfig) {
     if (!this.installed(config.id)) throw new PanelError(`Upload ${config.jarFile} in Files before starting this server.`)
     if (!this.eulaAccepted(config.id)) throw new PanelError('Review and accept the Minecraft EULA in Settings before starting Paper.')
-    const major = config.javaVersion.split(' ')[1]
-    const java = process.env[`JAVA_${major}_BIN`] || 'java'
-    const cacheKey = `${java}:${major}`
-    if (!this.javaChecks.has(cacheKey)) {
-      const result = spawnSync(java, ['-version'], { encoding: 'utf8', timeout: 5000, shell: false })
-      if (result.error || result.status !== 0) throw new PanelError(`Install ${config.javaVersion} or configure JAVA_${major}_BIN.`)
-      const actual = `${result.stdout}\n${result.stderr}`.match(/(?:java|openjdk)\s+(?:version\s+)?"?(?:1\.)?(\d+)/iu)?.[1]
-      if (actual !== major) throw new PanelError(`Selected ${config.javaVersion}, but ${java} reports ${actual ? `Java ${actual}` : 'an unrecognized Java version'}. Configure JAVA_${major}_BIN.`)
-      this.javaChecks.add(cacheKey)
-    }
     startupArgs(config)
+  }
+
+  private async ensureJava(config: ServerConfig) {
+    const major = Number(config.javaVersion.split(' ')[1])
+    if (this.javaExecutables.has(major)) return
+    let job = this.javaJobs.get(major)
+    if (!job) {
+      const local = localJava(this.root, major)
+      if (local) { this.javaExecutables.set(major, local); return }
+      job = { promise: Promise.resolve(''), listeners: new Set() }
+      const current = job
+      current.promise = Promise.resolve().then(() => installJava({ root: this.root, major, onProgress: (progress) => {
+        current.progress = progress
+        for (const listener of current.listeners) listener(progress)
+      } })).then((executable) => { this.javaExecutables.set(major, executable); return executable }).finally(() => { this.javaJobs.delete(major) })
+      this.javaJobs.set(major, job)
+    }
+    const listener = (progress: DownloadProgressState) => { this.downloads[config.id] = progress }
+    job.listeners.add(listener)
+    if (job.progress) listener(job.progress)
+    this.manager.log(config.id, `[Panel] Preparing Java ${major} in network/java-${major}.`)
+    try { await job.promise }
+    catch (error) {
+      const message = error instanceof PanelError ? error.message : `Java ${major} installation failed.`
+      this.downloads[config.id] = { ...(this.downloads[config.id] ?? { received: 0, total: 0, bytesPerSecond: 0 }), label: `Java ${major}`, phase: 'failed', error: message }
+      this.manager.log(config.id, `[Panel] ${message}`)
+      throw error
+    } finally { job.listeners.delete(listener) }
   }
 
   private async startEligible() {
     for (const config of [...this.configs].sort((a, b) => Number(a.kind === 'velocity') - Number(b.kind === 'velocity'))) {
       if (config.autoStart && this.installed(config.id) && this.eulaAccepted(config.id)) {
-        try { await this.manager.start(config) } catch (error) { this.manager.log(config.id, `[Panel] Autostart skipped: ${String(error)}`) }
+        try { await this.power(config.id, 'Start') } catch (error) { this.manager.log(config.id, `[Panel] Autostart skipped: ${String(error)}`) }
       }
     }
   }
@@ -121,7 +146,11 @@ export class NetworkRuntime {
     const config = this.config(id)
     if (this.backupJobs.has(id) || this.writeJobs.has(id)) throw new PanelError('Wait for active file operations or backups to finish.')
     if (action === 'Stop' || action === 'Restart') await this.manager.stop(config)
-    if (action === 'Start' || action === 'Restart') await this.manager.start(config)
+    if (action === 'Start' || action === 'Restart') {
+      this.checkAssets(config)
+      await this.withWrite(id, () => this.ensureJava(config))
+      await this.manager.start(config)
+    }
   }
 
   saveSettings(id: string, input: Partial<Server>) {
@@ -166,6 +195,8 @@ export class NetworkRuntime {
       this.manager.log(id, `[Panel] Downloading ${config.kind === 'velocity' ? 'Velocity' : 'Paper'} JAR.`)
       try {
         const source = await reinstallJar({ directory: this.directory(id), jarFile: config.jarFile, project: config.kind === 'velocity' ? 'velocity' : 'paper', manifest: resolve(this.root, 'installations', `${id}.json`), onProgress: (progress) => { this.downloads[id] = progress } })
+        await this.ensureJava(config)
+        this.downloads[id] = { phase: 'complete', received: source.size, total: source.size, bytesPerSecond: 0 }
         this.manager.log(id, `[Panel] Installed ${source.project} ${source.version} build ${source.build}. Server remains stopped.`)
       } catch (error) {
         const message = error instanceof PanelError ? error.message : 'Download failed.'

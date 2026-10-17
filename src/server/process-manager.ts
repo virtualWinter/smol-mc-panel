@@ -24,6 +24,7 @@ interface Options {
   stopTimeout?: number
   restartDelay?: number
   onProcessChange?: () => void
+  executable?: (config: ServerConfig) => string
 }
 
 export class ProcessManager {
@@ -63,7 +64,7 @@ export class ProcessManager {
     item.lastTps = undefined
     item.status = 'Starting'
     const major = config.javaVersion.split(' ')[1]
-    const executable = process.env[`JAVA_${major}_BIN`] || 'java'
+    const executable = this.options.executable?.(config) ?? process.env[`JAVA_${major}_BIN`] ?? 'java'
     this.log(config.id, `[Panel] Starting ${config.name} with ${config.javaVersion}.`)
     const launch = this.options.launch ?? ((java, args, cwd) => spawn(java, args, { cwd, stdio: 'pipe', shell: false, env: { ...process.env, TERM: 'xterm-256color' } }))
     let child: ChildProcessWithoutNullStreams

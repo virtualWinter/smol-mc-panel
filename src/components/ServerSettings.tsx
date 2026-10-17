@@ -58,7 +58,7 @@ function SettingsForm({ server }: ServerProps) {
             catch (error) { setError(String(error)) }
             finally { setReinstalling(false) }
           }}>{reinstalling || downloadActive ? 'Reinstalling…' : 'Reinstall'}</Button>
-          {(server.download || reinstalling) && <DownloadProgress progress={reinstalling && !downloadActive ? { phase: 'resolving', received: 0, total: 0, bytesPerSecond: 0 } : server.download ?? { phase: 'resolving', received: 0, total: 0, bytesPerSecond: 0 }} />}
+          {((server.download && !server.download.label?.startsWith('Java')) || reinstalling) && <DownloadProgress progress={reinstalling && !downloadActive ? { phase: 'resolving', received: 0, total: 0, bytesPerSecond: 0 } : server.download ?? { phase: 'resolving', received: 0, total: 0, bytesPerSecond: 0 }} />}
         </Stack>
       </Paper>
       {server.kind === 'paper' && !server.eulaAccepted && <Paper variant="outlined" sx={{ p: 2 }}>

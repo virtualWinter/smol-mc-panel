@@ -4,7 +4,7 @@ A single-network Minecraft panel: one Velocity proxy and Paper backends, managed
 
 ## Run
 
-Requires Node.js 22.18+, pnpm, Java, and `tar` (for backups). Linux provides CPU/RAM metrics.
+Requires Node.js 22.18+, pnpm, and `tar` (for backups). Linux provides CPU/RAM metrics and automatic Java installation.
 
 ```sh
 pnpm install
@@ -15,7 +15,7 @@ The first request creates `network/` with persistent `panel.json`, a forwarding 
 
 1. Download compatible releases from [Velocity](https://papermc.io/downloads/velocity) and [Paper](https://papermc.io/downloads/paper).
 2. Drop the proxy JAR into its Files page as `velocity.jar`, and the Paper JAR into each backend as `server.jar` (128 MiB per file; 160 MiB total request limit). Alternatively, use **Reinstall** in Settings.
-3. Select the required Java version in Settings. Set `JAVA_21_BIN`, `JAVA_25_BIN`, or `JAVA_17_BIN` if that version is not your default `java` executable. The panel checks the actual version before launching.
+3. Select the required Java version in Settings. The panel uses a matching installed Java, or automatically downloads Eclipse Temurin into `network/java-17`, `network/java-21`, or `network/java-25` when reinstalling or starting a server. Explicit `JAVA_21_BIN`, `JAVA_25_BIN`, and `JAVA_17_BIN` overrides take precedence and must report the selected version. Reinstall uses saved settings, so save a changed Java version first.
 4. Read and accept the Minecraft EULA in each Paper server's Settings, then Start the servers.
 
 The generated proxy and backends initially bind to loopback ports 25565–25567. Velocity uses modern forwarding, online-mode authentication, and a shared secret; Paper backends stay loopback-only with Velocity authentication enabled. To expose Minecraft itself, deliberately configure the proxy's `bind` in `velocity.toml` and your firewall. Do not expose backend ports.
@@ -23,6 +23,7 @@ The generated proxy and backends initially bind to loopback ports 25565–25567.
 ## Runtime behavior
 
 - Start, graceful Stop/Restart, real stdin commands, ANSI stdout/stderr, and capped crash recovery.
+- Missing Java versions are downloaded from Adoptium on Linux x64/arm64. Archive size, SHA-256, extraction paths/links, and the actual Java executable version are verified before the final `java-<version>` directory is installed. Downloads show live progress; servers sharing a version share one installation/download. Existing Java directories are never overwritten silently. Other platforms require a local Java installation or explicit override.
 - Eligible servers autostart when the panel starts: a JAR must exist and Paper's EULA must already be accepted. No automatic JAR installation or updates.
 - **Reinstall** requires a stopped server and replaces only the configured JAR. The first panel-managed download selects the latest stable PaperMC build (confirm version/Java compatibility and back up worlds first); later reinstalls redownload that exact recorded build. Downloads are restricted to PaperMC, bounded, SHA-256 verified, and atomically swapped only after successful verification. Worlds, plugins, configs, EULA, and backups are untouched; the server is not started automatically.
 - Settings and list ordering persist in `network/panel.json`. Managed ports/directories are read-only in the UI; change them and their corresponding server files only with the panel stopped.

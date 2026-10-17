@@ -29,7 +29,8 @@ export interface ServerFile { name: string; size: string; directory?: boolean; m
 export interface Backup { id: string; name: string; created: string; size: string }
 
 export interface DownloadProgressState {
-  phase: 'resolving' | 'downloading' | 'verifying' | 'installing' | 'complete' | 'failed'
+  phase: 'resolving' | 'downloading' | 'verifying' | 'extracting' | 'installing' | 'complete' | 'failed'
+  label?: string
   received: number
   total: number
   bytesPerSecond: number

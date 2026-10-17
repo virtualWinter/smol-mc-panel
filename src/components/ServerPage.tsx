@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Alert, Box, Button, Stack, Typography } from '@mui/material'
+import { Alert, Box, Button, Paper, Stack, Typography } from '@mui/material'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import { usePanel } from '../data/usePanel'
 import ServerStats from './ServerStats'
@@ -11,6 +11,7 @@ import ServerBackups from './ServerBackups'
 import ServerSettings from './ServerSettings'
 import ServerGraphs from './ServerGraphs'
 import ServerHeader from './ServerHeader'
+import DownloadProgress from './DownloadProgress'
 
 export default function ServerPage({ serverId, page }: { serverId: string; page: string }) {
   const { servers, powerServer } = usePanel()
@@ -25,6 +26,7 @@ export default function ServerPage({ serverId, page }: { serverId: string; page:
       {!server ? <Typography component="h1" variant="h4">Server not found</Typography> : (
         <>
           <ServerHeader server={server} page={page} />
+          {server.download && !['complete'].includes(server.download.phase) && (page !== 'settings' || server.download.label?.startsWith('Java')) && <Paper variant="outlined" sx={{ p: 2 }}><DownloadProgress progress={server.download} /></Paper>}
           {!server.installed && <Alert severity="info">Upload {server.jarFile} from the official {server.kind === 'velocity' ? 'Velocity' : 'Paper'} downloads in Files, then start the server.</Alert>}
           {page === 'files' ? <ServerFiles server={server} /> : page === 'backups' ? <ServerBackups server={server} /> : page === 'settings' ? <ServerSettings server={server} /> : page !== '' ? <Typography color="text.secondary">Page not found</Typography> : (
           <Stack spacing={2}>
