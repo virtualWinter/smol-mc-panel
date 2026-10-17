@@ -27,7 +27,7 @@ export default function SetupForm({ existingProxy }: { existingProxy?: 'velocity
         <TextField required label="Admin username" autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} slotProps={{ htmlInput: { maxLength: 32, pattern: '[a-zA-Z0-9._\\-]+' } }} />
         <TextField required label="Password" type="password" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} slotProps={{ htmlInput: { minLength: 12, maxLength: 128 } }} helperText="At least 12 characters" />
         <TextField required label="Confirm password" type="password" autoComplete="new-password" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} />
-        <TextField select label="Proxy software" value={kind} disabled={Boolean(existingProxy)} onChange={(event) => setKind(event.target.value as 'velocity' | 'bungeecord')} helperText={existingProxy ? 'Existing network configuration will be kept.' : kind === 'bungeecord' ? 'BungeeCord requires a manually supplied JAR.' : undefined}>
+        <TextField select label="Proxy software" value={kind} disabled={Boolean(existingProxy)} onChange={(event) => setKind(event.target.value as 'velocity' | 'bungeecord')} helperText={existingProxy ? 'Existing network configuration will be kept.' : undefined}>
           <MenuItem value="velocity">Velocity</MenuItem>
           <MenuItem value="bungeecord">BungeeCord</MenuItem>
         </TextField>

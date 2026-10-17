@@ -70,3 +70,62 @@ test('PaperMC downloads require an identifying contact User-Agent', async () => 
     await assert.rejects(reinstallJar({ directory: root, jarFile: 'server.jar', project: 'paper', manifest: resolve(root, 'install.json'), userAgent: 'generic-agent' }), /PAPERMC_USER_AGENT/u)
   } finally { rmSync(root, { recursive: true, force: true }) }
 })
+
+const bungeeBase = 'https://hub.spigotmc.org/jenkins/job/BungeeCord'
+const bungeeJar = `${bungeeBase}/2104/artifact/bootstrap/target/BungeeCord.jar`
+
+function bungeeRequest(calls: string[], corrupt = false, fingerprint = true): typeof fetch {
+  return async (input, options) => {
+    const url = String(input)
+    calls.push(`${options?.method ?? 'GET'} ${url}`)
+    assert.equal(options?.redirect, 'error')
+    if (url.startsWith(`${bungeeBase}/lastSuccessfulBuild/api/json?`)) return Response.json({
+      number: 2104, result: 'SUCCESS', artifacts: [{ fileName: 'BungeeCord.jar', relativePath: 'bootstrap/target/BungeeCord.jar' }],
+      fingerprint: fingerprint ? [{ fileName: 'net.md-5:BungeeCord.jar', hash: createHash('md5').update(body).digest('hex') }] : [],
+    })
+    assert.equal(url, bungeeJar)
+    if (options?.method === 'HEAD') return new Response(null, { headers: { 'Content-Length': String(body.length) } })
+    const bytes = Uint8Array.from(body)
+    if (corrupt) bytes[bytes.length - 1] ^= 1
+    return new Response(bytes, { headers: { 'Content-Length': String(bytes.length) } })
+  }
+}
+
+test('BungeeCord downloads from official Jenkins and pins its build, MD5, and SHA-256', async () => {
+  const root = mkdtempSync('/tmp/opencode/bungee-install-')
+  try {
+    writeFileSync(resolve(root, 'bungeecord.jar'), 'old-jar')
+    writeFileSync(resolve(root, 'config.yml'), 'do-not-touch')
+    const calls: string[] = []
+    const options = { directory: root, jarFile: 'bungeecord.jar', project: 'bungeecord' as const, manifest: resolve(root, 'installations/proxy.json'), request: bungeeRequest(calls), userAgent }
+    const source = await reinstallJar(options)
+    assert.equal(source.build, 2104)
+    assert.equal(source.md5, createHash('md5').update(body).digest('hex'))
+    assert.equal(source.sha256, createHash('sha256').update(body).digest('hex'))
+    assert.deepEqual(readFileSync(resolve(root, 'bungeecord.jar')), body)
+    assert.equal(readFileSync(resolve(root, 'config.yml'), 'utf8'), 'do-not-touch')
+    calls.length = 0
+    await reinstallJar(options)
+    assert.deepEqual(calls, [`GET ${bungeeJar}`])
+  } finally { rmSync(root, { recursive: true, force: true }) }
+})
+
+test('BungeeCord fingerprint mismatches preserve the existing JAR', async () => {
+  const root = mkdtempSync('/tmp/opencode/bungee-corrupt-')
+  try {
+    writeFileSync(resolve(root, 'bungeecord.jar'), 'old-jar')
+    await assert.rejects(reinstallJar({ directory: root, jarFile: 'bungeecord.jar', project: 'bungeecord', manifest: resolve(root, 'installations/proxy.json'), request: bungeeRequest([], true), userAgent }), /verification failed/u)
+    assert.equal(readFileSync(resolve(root, 'bungeecord.jar'), 'utf8'), 'old-jar')
+    assert.deepEqual(readdirSync(root), ['bungeecord.jar'])
+  } finally { rmSync(root, { recursive: true, force: true }) }
+})
+
+test('BungeeCord refuses an unverified artifact when Jenkins has no fingerprint', async () => {
+  const root = mkdtempSync('/tmp/opencode/bungee-fingerprint-')
+  try {
+    const calls: string[] = []
+    await assert.rejects(reinstallJar({ directory: root, jarFile: 'bungeecord.jar', project: 'bungeecord', manifest: resolve(root, 'installations/proxy.json'), request: bungeeRequest(calls, false, false), userAgent }), /fingerprint/u)
+    assert.equal(calls.length, 1)
+    assert.deepEqual(readdirSync(root), [])
+  } finally { rmSync(root, { recursive: true, force: true }) }
+})

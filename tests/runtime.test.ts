@@ -48,6 +48,5 @@ test('explicit BungeeCord configuration provisions a proxy without inventing bac
     assert.equal(existsSync(resolve(root, 'servers/survival')), false)
     assert.equal(existsSync(resolve(root, 'forwarding.secret')), false)
     assert.ok(readFileSync(resolve(root, 'servers/proxy/config.yml'), 'utf8').includes('servers: {}'))
-    await assert.rejects(runtime.reinstall('proxy'), /manually|Upload the BungeeCord/u)
   } finally { await runtime.shutdown(); rmSync(root, { recursive: true, force: true }) }
 })

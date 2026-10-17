@@ -7,19 +7,24 @@ import { MAX_UPLOAD } from './files'
 import type { DownloadProgressState } from '../types'
 
 const api = 'https://fill.papermc.io/v3/projects'
+const bungeeApi = 'https://hub.spigotmc.org/jenkins/job/BungeeCord'
 interface JarSource {
-  project: 'paper' | 'velocity'
+  project: 'paper' | 'velocity' | 'bungeecord'
   version: string
   build: number
   jarFile: string
   url: string
-  sha256: string
+  sha256?: string
+  md5?: string
   size: number
 }
 
 function validateSource(value: JarSource): JarSource {
   const url = new URL(value.url)
-  if (!['paper', 'velocity'].includes(value.project) || typeof value.version !== 'string' || !Number.isInteger(value.build) || value.build < 1 || !/^[a-f0-9]{64}$/u.test(value.sha256) || !Number.isInteger(value.size) || value.size < 4 || value.size > MAX_UPLOAD || url.protocol !== 'https:' || url.hostname !== 'fill-data.papermc.io' || url.port || url.username || url.password) throw new PanelError('PaperMC returned invalid JAR metadata.')
+  const bungee = value.project === 'bungeecord'
+  const validChecksum = bungee ? ((typeof value.sha256 === 'string' && /^[a-f0-9]{64}$/u.test(value.sha256)) || (typeof value.md5 === 'string' && /^[a-f0-9]{32}$/u.test(value.md5))) : typeof value.sha256 === 'string' && /^[a-f0-9]{64}$/u.test(value.sha256)
+  const validUrl = bungee ? value.url === `${bungeeApi}/${value.build}/artifact/bootstrap/target/BungeeCord.jar` : url.hostname === 'fill-data.papermc.io'
+  if (!['paper', 'velocity', 'bungeecord'].includes(value.project) || typeof value.version !== 'string' || !Number.isInteger(value.build) || value.build < 1 || !validChecksum || (value.sha256 !== undefined && !/^[a-f0-9]{64}$/u.test(value.sha256)) || (value.md5 !== undefined && !/^[a-f0-9]{32}$/u.test(value.md5)) || !Number.isInteger(value.size) || value.size < 4 || value.size > MAX_UPLOAD || !validUrl || url.protocol !== 'https:' || url.port || url.username || url.password) throw new PanelError('The download service returned invalid JAR metadata.')
   return value
 }
 
@@ -32,12 +37,12 @@ export function installedSource(manifest: string, project: string, jarFile: stri
 }
 
 async function readJson(response: Response): Promise<unknown> {
-  if (!response.ok || !response.body) throw new PanelError(`PaperMC metadata request failed (${response.status}).`)
+  if (!response.ok || !response.body) throw new PanelError(`Download metadata request failed (${response.status}).`)
   let size = 0
   const chunks: Buffer[] = []
   for await (const chunk of response.body) {
     size += chunk.length
-    if (size > 8 * 1024 * 1024) throw new PanelError('PaperMC metadata response was too large.')
+    if (size > 8 * 1024 * 1024) throw new PanelError('Download metadata response was too large.')
     chunks.push(Buffer.from(chunk))
   }
   return JSON.parse(Buffer.concat(chunks).toString('utf8'))
@@ -45,6 +50,18 @@ async function readJson(response: Response): Promise<unknown> {
 
 async function latestSource(project: JarSource['project'], jarFile: string, request: typeof fetch, userAgent: string): Promise<JarSource> {
   const get = (url: string) => request(url, { headers: { 'User-Agent': userAgent }, redirect: 'error', signal: AbortSignal.timeout(15_000) }).then(readJson)
+  if (project === 'bungeecord') {
+    const data = await get(`${bungeeApi}/lastSuccessfulBuild/api/json?tree=number,result,artifacts[fileName,relativePath],fingerprint[fileName,hash]`) as {
+      number: number; result: string; artifacts?: { fileName: string; relativePath: string }[]; fingerprint?: { fileName: string; hash: string }[]
+    }
+    if (data.result !== 'SUCCESS' || !Number.isInteger(data.number) || data.number < 1 || !Array.isArray(data.artifacts) || !data.artifacts.some((artifact) => artifact.fileName === 'BungeeCord.jar' && artifact.relativePath === 'bootstrap/target/BungeeCord.jar')) throw new PanelError('No successful BungeeCord JAR build was found.')
+    const md5 = Array.isArray(data.fingerprint) ? data.fingerprint.find((item) => item.fileName === 'BungeeCord.jar' || item.fileName === 'net.md-5:BungeeCord.jar')?.hash : undefined
+    if (!md5 || !/^[a-f0-9]{32}$/u.test(md5)) throw new PanelError('BungeeCord did not publish an artifact fingerprint; the existing JAR was not changed.')
+    const url = `${bungeeApi}/${data.number}/artifact/bootstrap/target/BungeeCord.jar`
+    const head = await request(url, { method: 'HEAD', headers: { 'User-Agent': userAgent }, redirect: 'error', signal: AbortSignal.timeout(15_000) })
+    if (!head.ok) throw new PanelError(`Could not inspect the BungeeCord JAR (${head.status}).`)
+    return validateSource({ project, jarFile, version: 'BungeeCord', build: data.number, url, md5, size: Number(head.headers.get('content-length')) })
+  }
   const data = await get(`${api}/${project}`) as { versions?: Record<string, string[]> }
   if (!data.versions || typeof data.versions !== 'object') throw new PanelError('PaperMC returned an invalid version list.')
   const versions = Object.values(data.versions).flat().filter((version): version is string => typeof version === 'string' && /^[\d.]+(?:-SNAPSHOT)?$/u.test(version))
@@ -89,10 +106,12 @@ export async function reinstallJar({ directory, jarFile, project, manifest, user
     descriptor = openSync(temporary, 'wx', 0o600)
     let size = 0
     const hash = createHash('sha256')
+    const md5 = source.md5 ? createHash('md5') : undefined
     for await (const chunk of response.body) {
       size += chunk.length
       if (size > source.size || size > MAX_UPLOAD) throw new PanelError('JAR download exceeded the expected size.')
       hash.update(chunk)
+      md5?.update(chunk)
       const bytes = Buffer.from(chunk)
       let offset = 0
       while (offset < bytes.length) offset += writeSync(descriptor, bytes, offset, bytes.length - offset)
@@ -100,7 +119,11 @@ export async function reinstallJar({ directory, jarFile, project, manifest, user
     }
     closeSync(descriptor); descriptor = undefined
     report('verifying', size)
-    if (size !== source.size || hash.digest('hex') !== source.sha256) throw new PanelError('JAR verification failed. The existing JAR was not changed.')
+    const sha256 = hash.digest('hex')
+    if (size !== source.size || (source.sha256 && sha256 !== source.sha256) || (source.md5 && md5!.digest('hex') !== source.md5)) throw new PanelError('JAR verification failed. The existing JAR was not changed.')
+    // Jenkins publishes an MD5 fingerprint, not SHA-256. Pin our verified bytes with
+    // SHA-256 too, so future BungeeCord reinstalls check both fingerprints.
+    source.sha256 = sha256
     mkdirSync(dirname(manifest), { recursive: true, mode: 0o700 })
     writeFileSync(`${manifest}.tmp`, JSON.stringify(source, null, 2), { mode: 0o600 })
     report('installing', size)
@@ -111,7 +134,7 @@ export async function reinstallJar({ directory, jarFile, project, manifest, user
     return source
   } catch (error) {
     if (error instanceof PanelError) throw error
-    throw new PanelError('Could not download the server JAR. Check connectivity and your PaperMC User-Agent; the server was not started.')
+    throw new PanelError('Could not download the server JAR. Check connectivity and the download service; the server was not started.')
   } finally {
     if (descriptor !== undefined) closeSync(descriptor)
     if (existsSync(temporary)) unlinkSync(temporary)

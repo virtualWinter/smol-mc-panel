@@ -191,11 +191,10 @@ export class NetworkRuntime {
 
   async reinstall(id: string) {
     const config = this.config(id)
-    if (config.kind === 'bungeecord') throw new PanelError('Upload the BungeeCord JAR in Files; automatic BungeeCord downloads are not supported.')
     await this.withWrite(id, async () => {
-      this.manager.log(id, `[Panel] Downloading ${config.kind === 'velocity' ? 'Velocity' : 'Paper'} JAR.`)
+      this.manager.log(id, `[Panel] Downloading ${config.kind === 'velocity' ? 'Velocity' : config.kind === 'bungeecord' ? 'BungeeCord' : 'Paper'} JAR.`)
       try {
-        const source = await reinstallJar({ directory: this.directory(id), jarFile: config.jarFile, project: config.kind === 'velocity' ? 'velocity' : 'paper', manifest: resolve(this.root, 'installations', `${id}.json`), onProgress: (progress) => { this.downloads[id] = progress } })
+        const source = await reinstallJar({ directory: this.directory(id), jarFile: config.jarFile, project: config.kind, manifest: resolve(this.root, 'installations', `${id}.json`), onProgress: (progress) => { this.downloads[id] = progress } })
         await this.ensureJava(config)
         this.downloads[id] = { phase: 'complete', received: source.size, total: source.size, bytesPerSecond: 0 }
         this.manager.log(id, `[Panel] Installed ${source.project} ${source.version} build ${source.build}. Server remains stopped.`)
@@ -273,7 +272,7 @@ export class NetworkRuntime {
     const filePath = request.searchParams.get('path') ?? ''
     const servers: Server[] = this.configs.map((config) => {
       const item = this.manager.get(config.id), history = this.metrics[config.id], players = this.playerCounts.get(config.id)
-      const source = config.kind === 'bungeecord' ? undefined : installedSource(resolve(this.root, 'installations', `${config.id}.json`), config.kind === 'velocity' ? 'velocity' : 'paper', config.jarFile)
+      const source = installedSource(resolve(this.root, 'installations', `${config.id}.json`), config.kind, config.jarFile)
       return { ...config, download: this.downloads[config.id] ? { ...this.downloads[config.id] } : undefined, jarVersion: source ? `${source.version} (build ${source.build})` : undefined, installed: this.installed(config.id), eulaAccepted: this.eulaAccepted(config.id), status: item.status, logs: [...item.logs], logOffset: item.logCount - item.logs.length, cpu: history.cpu.length ? `${history.cpu.at(-1)!.toFixed(1)}%` : '—', memory: history.ram.length ? `${history.ram.at(-1)!.toFixed(0)} / ${config.maxMemory} MiB` : `— / ${config.maxMemory} MiB`, players: players ? `${players.online} / ${players.max}` : '—' }
     })
     let files: PanelState['files'] = {}
