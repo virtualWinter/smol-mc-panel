@@ -14,7 +14,7 @@ export default function ServerOverview() {
   const filtered = servers.filter((server) => `${server.name} ${server.address}`.toLowerCase().includes(search.toLowerCase()))
 
   return (
-    <Stack spacing={2}>
+    <Stack spacing={3}>
       <Stack direction="row" spacing={2} sx={{ alignItems: 'center', justifyContent: 'space-between' }}>
         <Typography component="h1" variant="h6" sx={{ fontWeight: 600 }}>Network</Typography>
         <TextField
@@ -31,7 +31,7 @@ export default function ServerOverview() {
       </Stack>
         <DndContext sensors={sensors} collisionDetection={closestCenter} modifiers={[restrictToVerticalAxis]} onDragEnd={({ active, over }) => { if (over) reorderServers(String(active.id), String(over.id)) }}>
         <SortableContext items={filtered.map((server) => server.id)} strategy={verticalListSortingStrategy}>
-        <Stack spacing={1.5}>
+        <Stack spacing={2}>
           {filtered.map((server) => <SortableServerRow key={server.id} server={server} />)}
           {filtered.length === 0 && <Typography color="text.secondary" sx={{ py: 4, textAlign: 'center' }}>No matches</Typography>}
         </Stack>

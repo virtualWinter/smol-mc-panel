@@ -4,7 +4,7 @@ import type { ServerProps } from '../types'
 
 export default function ServerHeader({ server, page }: ServerProps & { page: string }) {
   return (
-    <Stack spacing={1.5} sx={{ alignItems: 'flex-start' }}>
+    <Stack spacing={2.5} sx={{ alignItems: 'flex-start' }}>
       <Stack spacing={0.5}>
         <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
           <Typography component="h1" variant="h6" sx={{ fontWeight: 600, lineHeight: 1.4 }}>{server.name}</Typography>

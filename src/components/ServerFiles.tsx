@@ -24,7 +24,7 @@ function FileManager({ server }: ServerProps) {
   const selectedEntry = entries.find((file) => file.path === fileKey)
 
   return (
-    <Stack spacing={1.5}>
+    <Stack spacing={2.5}>
       <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ justifyContent: 'space-between', alignItems: { sm: 'center' } }}>
         <Breadcrumbs separator="/" aria-label="File path" sx={{ fontSize: 14, lineHeight: '20px', '& .MuiBreadcrumbs-li': { display: 'flex', alignItems: 'center' }, '& .MuiLink-root': { display: 'block', p: 0, lineHeight: '20px', fontFamily: 'inherit', verticalAlign: 'baseline' }, '& .MuiBreadcrumbs-separator': { mx: 0.5, color: 'text.disabled', lineHeight: '20px' } }}>
           <Link {...dropProps('')} component="button" underline="hover" color={path.length ? 'text.secondary' : 'text.primary'} onClick={() => navigate([])} sx={{ fontSize: 14 }} aria-label="Root directory">{path.length ? 'server' : 'server/'}</Link>

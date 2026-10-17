@@ -20,7 +20,7 @@ export default function ServerPage() {
   })
 
   return (
-    <Stack spacing={2}>
+    <Stack spacing={3}>
       <Button component={Link} to="/" color="inherit" size="small" startIcon={<ArrowBackIcon />} sx={{ alignSelf: 'flex-start', color: 'text.secondary' }}>Network</Button>
       {!server ? <Typography component="h1" variant="h4">Server not found</Typography> : (
         <>
