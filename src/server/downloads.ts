@@ -68,7 +68,7 @@ interface ReinstallOptions {
   request?: typeof fetch
 }
 
-export async function reinstallJar({ directory, jarFile, project, manifest, userAgent = process.env.PAPERMC_USER_AGENT, request = fetch }: ReinstallOptions) {
+export async function reinstallJar({ directory, jarFile, project, manifest, userAgent = process.env.PAPERMC_USER_AGENT || 'smol-mc-panel/0.0.0 (https://arsn.cc; admin@arsn.cc)', request = fetch }: ReinstallOptions) {
   if (!userAgent || userAgent.length > 512 || /[\r\n]/u.test(userAgent) || !/(?:https?:\/\/|mailto:|@)/u.test(userAgent)) throw new PanelError('Set PAPERMC_USER_AGENT to identify your panel with a contact URL or email, as required by PaperMC.')
   const target = safePath(directory, jarFile)
   if (!existsSync(dirname(target))) throw new PanelError('The configured JAR directory does not exist.')
