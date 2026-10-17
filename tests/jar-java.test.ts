@@ -40,7 +40,7 @@ test('JAR entry-point class versions distinguish Java 21 from Java 25', async ()
 test('runtime upgrades and persists Java 25 before launching a Java-25 JAR', async () => {
   const root = mkdtempSync('/tmp/opencode/runtime-jar-java-')
   saveConfig(root, defaults())
-  const runtime = new NetworkRuntime(root, false)
+  const runtime = new NetworkRuntime(root, false, false)
   try {
     fixtureJar(resolve(root, 'servers/proxy/velocity.jar'), 69)
     mkdirSync(resolve(root, 'java/java-25/bin'), { recursive: true })

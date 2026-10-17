@@ -4,6 +4,7 @@ export interface Server {
   jarVersion?: string
   download?: DownloadProgressState
   startupIssue?: string
+  telemetry?: AgentMetrics
   eulaAccepted: boolean
   id: string
   name: string
@@ -43,6 +44,24 @@ export interface DownloadProgressState {
   total: number
   bytesPerSecond: number
   error?: string
+}
+
+export interface AgentMetrics {
+  receivedAt: number
+  cpu?: number
+  heapUsed: number
+  heapMax: number
+  heapCommitted: number
+  uptime: number
+  threads: number
+  javaVersion: string
+  tps?: number[]
+  mspt?: number
+  onlinePlayers?: number
+  maxPlayers?: number
+  serverVersion?: string
+  players?: { name: string; uuid: string; ping: number }[]
+  worlds?: { name: string; players: number; entities: number; chunks: number }[]
 }
 
 export interface FileEntry extends ServerFile { path: string; content?: string; binary?: boolean }

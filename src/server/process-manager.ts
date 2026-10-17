@@ -14,7 +14,6 @@ export interface ManagedProcess {
   intentionalStop: boolean
   restarts: number[]
   restartTimer?: ReturnType<typeof setTimeout>
-  lastTps?: number
   incompatibleJava?: boolean
   invalidConfiguration?: boolean
 }
@@ -27,6 +26,7 @@ interface Options {
   restartDelay?: number
   onProcessChange?: () => void
   executable?: (config: ServerConfig) => string
+  extraJvmArgs?: (config: ServerConfig) => string[]
 }
 
 export class ProcessManager {
@@ -48,10 +48,6 @@ export class ProcessManager {
     const plain = stripVTControlCharacters(line)
     if (item.status === 'Starting' && plain.includes('UnsupportedClassVersionError')) item.incompatibleJava = true
     if (item.status === 'Starting' && (plain.includes('Your configuration is invalid') || plain.includes('java.lang.IllegalArgumentException: No servers defined'))) item.invalidConfiguration = true
-    if (/TPS from last/u.test(plain)) {
-      const value = Number(plain.split(':').at(-1)?.match(/[\d.]+/u)?.[0])
-      if (Number.isFinite(value)) item.lastTps = Math.min(20, value)
-    }
     if (/Done \(|Listening on|Done \([\d.,]+s\)!/u.test(plain) && item.child && item.status === 'Starting') { item.status = 'Online'; item.incompatibleJava = false }
   }
 
@@ -62,10 +58,9 @@ export class ProcessManager {
     clearTimeout(item.restartTimer)
     item.restartTimer = undefined
     this.options.beforeStart(config)
-    const args = startupArgs(config)
+    const args = [...(this.options.extraJvmArgs?.(config) ?? []), ...startupArgs(config)]
     if (!automatic) item.restarts = []
     item.intentionalStop = false
-    item.lastTps = undefined
     item.incompatibleJava = false
     item.invalidConfiguration = false
     item.status = 'Starting'

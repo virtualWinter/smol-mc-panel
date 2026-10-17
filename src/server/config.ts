@@ -3,7 +3,7 @@ import { resolve } from 'node:path'
 import type { Server, SetupServerInput } from '../types'
 import { PanelError } from './errors'
 
-export type ServerConfig = Omit<Server, 'installed' | 'jarVersion' | 'download' | 'startupIssue' | 'eulaAccepted' | 'status' | 'memory' | 'players' | 'cpu' | 'logs' | 'logOffset'>
+export type ServerConfig = Omit<Server, 'installed' | 'jarVersion' | 'download' | 'startupIssue' | 'telemetry' | 'eulaAccepted' | 'status' | 'memory' | 'players' | 'cpu' | 'logs' | 'logOffset'>
 export const javaVersions = ['Java 25', 'Java 21', 'Java 17']
 
 export function proxyConfig(kind: 'velocity' | 'bungeecord'): ServerConfig {

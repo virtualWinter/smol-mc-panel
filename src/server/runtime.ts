@@ -17,6 +17,9 @@ import { installedSource, reinstallJar } from './downloads'
 import { installJava, managedJava } from './java'
 import { proxyStartupIssue } from './proxy-config'
 import { requiredJava } from './jar-java'
+import { buildAgent } from './agent-build'
+import { readAgentSources } from './agent-sources'
+import { TelemetryCollector } from './telemetry'
 
 const execute = promisify(execFile)
 
@@ -29,7 +32,6 @@ export class NetworkRuntime {
   private sampling = false
   private timer: ReturnType<typeof setInterval>
   private ticksPerSecond = 100
-  private lastTpsRequest = 0
   private backupJobs = new Set<string>()
   private writeJobs = new Set<string>()
   private javaExecutables = new Map<number, string>()
@@ -37,8 +39,11 @@ export class NetworkRuntime {
   private downloads: Record<string, DownloadProgressState> = {}
   private jarRequirements = new Map<string, { size: number; mtime: number; inode: number; major: number }>()
   private releaseLock: () => void
+  private telemetry: TelemetryCollector
+  private agentBuild?: Promise<string>
+  private agentArgs = new Map<string, string[]>()
 
-  constructor(readonly root: string, autostart = true) {
+  constructor(readonly root: string, autostart = true, private enableAgent = true) {
     mkdirSync(root, { recursive: true, mode: 0o700 })
     this.releaseLock = acquireLock(root)
     try {
@@ -56,11 +61,12 @@ export class NetworkRuntime {
     for (const config of this.configs) serverDirectory(root, config.workingDirectory)
     provisionNetwork(root, this.configs)
     try { this.ticksPerSecond = Number(execFileSync('getconf', ['CLK_TCK'], { encoding: 'utf8', timeout: 1000 })) || 100 } catch { /* Linux normally uses 100 clock ticks. */ }
-    this.manager = new ProcessManager({ directory: (config) => this.directory(config.id), beforeStart: (config) => this.checkStart(config), executable: (config) => this.javaExecutables.get(Number(config.javaVersion.split(' ')[1]))!, onProcessChange: () => {
+    this.manager = new ProcessManager({ directory: (config) => this.directory(config.id), beforeStart: (config) => this.checkStart(config), executable: (config) => this.javaExecutables.get(Number(config.javaVersion.split(' ')[1]))!, extraJvmArgs: (config) => this.agentArgs.get(config.id) ?? [], onProcessChange: () => {
       const pids = Object.fromEntries([...this.manager.processes].filter(([, item]) => item.child?.pid).map(([id, item]) => [id, item.child!.pid]))
       writeFileSync(`${pidFile}.tmp`, JSON.stringify(pids), { mode: 0o600 })
       renameSync(`${pidFile}.tmp`, pidFile)
     } })
+    this.telemetry = new TelemetryCollector(root, (id) => this.manager.get(id).child?.pid)
     for (const config of this.configs) this.metrics[config.id] = emptyMetrics(config.kind !== 'paper')
     this.timer = setInterval(() => { void this.sample() }, 2000)
     this.timer.unref()
@@ -155,6 +161,22 @@ export class NetworkRuntime {
     return next
   }
 
+  private async prepareAgent(config: ServerConfig) {
+    if (!this.enableAgent) return
+    if (this.root.includes('=')) throw new PanelError('The data path cannot contain = when attaching the metrics agent.')
+    if (!this.agentBuild) {
+      this.manager.log(config.id, '[Panel] Preparing internal metrics agent.')
+      this.downloads[config.id] = { phase: 'installing', label: 'Metrics agent', received: 0, total: 0, bytesPerSecond: 0 }
+      const java = this.javaExecutables.get(Number(config.javaVersion.split(' ')[1]))!
+      this.agentBuild = buildAgent(this.root, java, readAgentSources()).catch((error: unknown) => { this.agentBuild = undefined; throw error })
+    }
+    const jar = await this.agentBuild
+    await this.telemetry.start()
+    const properties = this.telemetry.configuration(config)
+    this.agentArgs.set(config.id, [`-javaagent:${jar}=${properties}`])
+    this.downloads[config.id] = { phase: 'complete', label: 'Metrics agent', received: 0, total: 0, bytesPerSecond: 0 }
+  }
+
   private async startEligible() {
     for (const config of [...this.configs].sort((a, b) => Number(a.kind !== 'paper') - Number(b.kind !== 'paper'))) {
       if (config.autoStart && this.installed(config.id) && this.eulaAccepted(config.id)) {
@@ -172,6 +194,7 @@ export class NetworkRuntime {
       config = await this.withWrite(id, async () => {
         const compatible = await this.compatibleJava(config)
         await this.ensureJava(compatible)
+        await this.prepareAgent(compatible)
         return compatible
       })
       await this.manager.start(config)
@@ -220,7 +243,9 @@ export class NetworkRuntime {
       this.manager.log(id, `[Panel] Downloading ${config.kind === 'velocity' ? 'Velocity' : config.kind === 'bungeecord' ? 'BungeeCord' : 'Paper'} JAR.`)
       try {
         const source = await reinstallJar({ directory: this.directory(id), jarFile: config.jarFile, project: config.kind, manifest: resolve(this.root, 'installations', `${id}.json`), onProgress: (progress) => { this.downloads[id] = progress } })
-        await this.ensureJava(await this.compatibleJava(config))
+        const compatible = await this.compatibleJava(config)
+        await this.ensureJava(compatible)
+        await this.prepareAgent(compatible)
         this.downloads[id] = { phase: 'complete', received: source.size, total: source.size, bytesPerSecond: 0 }
         this.manager.log(id, `[Panel] Installed ${source.project} ${source.version} build ${source.build}. Server remains stopped.`)
       } catch (error) {
@@ -236,26 +261,23 @@ export class NetworkRuntime {
     if (this.sampling) return
     this.sampling = true
     try {
-      const requestTps = Date.now() - this.lastTpsRequest >= 15_000
-      if (requestTps) this.lastTpsRequest = Date.now()
       await Promise.all(this.configs.map(async (config) => {
         const process = this.manager.get(config.id)
         const history = this.metrics[config.id]
+        const agent = this.telemetry.latest(config.id)
         if (!process.child?.pid) { this.usage.delete(config.id); this.playerCounts.delete(config.id); appendMetric(history.cpu, 0); appendMetric(history.ram, 0); appendMetric(history.players, 0); return }
         const usage = processUsage(process.child.pid)
         const previous = this.usage.get(config.id)
         if (usage) {
           const now = Date.now()
-          if (previous) appendMetric(history.cpu, Math.max(0, (usage.ticks - previous.ticks) / this.ticksPerSecond / ((now - previous.at) / 1000) * 100))
+          if (agent?.cpu !== undefined) appendMetric(history.cpu, agent.cpu)
+          else if (previous) appendMetric(history.cpu, Math.max(0, (usage.ticks - previous.ticks) / this.ticksPerSecond / ((now - previous.at) / 1000) * 100))
           appendMetric(history.ram, usage.rssMiB)
           this.usage.set(config.id, { ticks: usage.ticks, at: now })
         }
-        const players = await queryPlayers(Number(config.address.split(':')[1]))
-        if (players) { this.playerCounts.set(config.id, players); appendMetric(history.players, players.online) }
-        if (config.kind === 'paper' && process.status === 'Online') {
-          if (requestTps) this.manager.command(config.id, 'tps', false)
-          if (process.lastTps !== undefined) appendMetric(history.tps, process.lastTps)
-        }
+        const players = agent?.onlinePlayers !== undefined && agent.maxPlayers !== undefined ? { online: agent.onlinePlayers, max: agent.maxPlayers } : await queryPlayers(Number(config.address.split(':')[1]))
+        if (players) { if (agent?.onlinePlayers !== undefined) players.online = agent.onlinePlayers; this.playerCounts.set(config.id, players); appendMetric(history.players, players.online) }
+        if (config.kind === 'paper' && process.status === 'Online' && agent?.tps) appendMetric(history.tps, agent.tps[0])
       }))
     } catch { /* A process can exit between metric reads. */ }
     finally { this.sampling = false }
@@ -298,7 +320,7 @@ export class NetworkRuntime {
     const servers: Server[] = this.configs.map((config) => {
       const item = this.manager.get(config.id), history = this.metrics[config.id], players = this.playerCounts.get(config.id)
       const source = installedSource(resolve(this.root, 'installations', `${config.id}.json`), config.kind, config.jarFile)
-      return { ...config, startupIssue: proxyStartupIssue(config.kind, this.directory(config.id)), download: this.downloads[config.id] ? { ...this.downloads[config.id] } : undefined, jarVersion: source ? `${source.version} (build ${source.build})` : undefined, installed: this.installed(config.id), eulaAccepted: this.eulaAccepted(config.id), status: item.status, logs: [...item.logs], logOffset: item.logCount - item.logs.length, cpu: history.cpu.length ? `${history.cpu.at(-1)!.toFixed(1)}%` : '—', memory: history.ram.length ? `${history.ram.at(-1)!.toFixed(0)} / ${config.maxMemory} MiB` : `— / ${config.maxMemory} MiB`, players: players ? `${players.online} / ${players.max}` : '—' }
+      return { ...config, telemetry: this.telemetry.latest(config.id), startupIssue: proxyStartupIssue(config.kind, this.directory(config.id)), download: this.downloads[config.id] ? { ...this.downloads[config.id] } : undefined, jarVersion: source ? `${source.version} (build ${source.build})` : undefined, installed: this.installed(config.id), eulaAccepted: this.eulaAccepted(config.id), status: item.status, logs: [...item.logs], logOffset: item.logCount - item.logs.length, cpu: history.cpu.length ? `${history.cpu.at(-1)!.toFixed(1)}%` : '—', memory: history.ram.length ? `${history.ram.at(-1)!.toFixed(0)} / ${config.maxMemory} MiB` : `— / ${config.maxMemory} MiB`, players: players ? `${players.online} / ${players.max}` : '—' }
     })
     let files: PanelState['files'] = {}
     if (serverId && this.configs.some((server) => server.id === serverId) && request.pathname.endsWith('/files')) {
@@ -308,5 +330,5 @@ export class NetworkRuntime {
     return { servers, files, filePath, backups: Object.fromEntries(this.configs.map((config) => [config.id, this.backups(config.id)])), metrics: structuredClone(this.metrics), javaVersions }
   }
 
-  async shutdown() { clearInterval(this.timer); try { await this.manager.shutdown(this.configs) } finally { this.releaseLock() } }
+  async shutdown() { clearInterval(this.timer); try { await this.manager.shutdown(this.configs); await this.telemetry.close() } finally { this.releaseLock() } }
 }
