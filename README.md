@@ -11,7 +11,7 @@ pnpm install
 pnpm dev
 ```
 
-Open the panel locally to complete first-start setup: create the admin username/password and select Velocity or BungeeCord. Setup creates exactly one configured proxy and signs the admin in. No sample backend servers, JAR downloads, or Java processes are created automatically. Subsequent visits require sign-in. Existing networks are preserved when adding their first admin account; their proxy type is kept.
+Open the panel locally to complete first-start setup: create the admin username/password, select Velocity or BungeeCord, and define your Paper servers. The editable server list starts with a suggested Lobby; add, edit, or remove rows before confirming. Each server has an explicit name, ID, loopback port, memory limit, and Java version. Setup creates the confirmed proxy/server directories and forwarding configuration, wires the chosen backends into the proxy, and signs the admin in. At least one backend is required; no unselected sample servers, JAR downloads, EULA acceptance, or Java processes are created automatically. Subsequent visits require sign-in. Existing networks are preserved when adding their first admin account; account-only setup does not add or change their servers.
 
 ```text
 data/
@@ -25,7 +25,7 @@ data/
 
 On restart, the old `network/` directory is migrated to `data/` if the destination does not exist. Legacy top-level `java-<version>` directories move under `data/java/`. Migration refuses live process locks or conflicting destinations; no existing files are overwritten. Stop the old panel and its managed servers before restarting with the new layout.
 
-1. Complete setup and choose your proxy. Backends are defined explicitly in `data/panel.json` while the panel is stopped; the panel does not discover or invent servers. Configure the proxy's backend list to match before starting it.
+1. Complete setup, choose your proxy, and confirm the backend servers you want. Setup writes them to `data/panel.json` and configures proxy routing automatically. Later server-list changes currently require explicitly editing `data/panel.json` and the proxy's backend list while the panel is stopped; the panel does not discover or invent servers.
 2. Use **Reinstall** for Velocity, BungeeCord, or Paper, or drop compatible official JARs into Files: `velocity.jar`, `bungeecord.jar`, or `server.jar` (128 MiB per file; 160 MiB total request limit).
 3. Select the required Java version in Settings. The panel automatically downloads Eclipse Temurin into `data/java/java-17`, `data/java/java-21`, or `data/java/java-25` when reinstalling or starting a server, then launches that exact binary. Existing verified panel-managed installations are reused; system Java and `JAVA_*_BIN` variables are not used. Reinstall uses saved settings, so save a changed Java version first.
 4. Read and accept the Minecraft EULA in each Paper server's Settings, then Start the servers.

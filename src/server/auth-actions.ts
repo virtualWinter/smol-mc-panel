@@ -3,14 +3,16 @@
 import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { createAccount, readAccount, validateCredentials, verifyPassword } from './accounts'
-import { loadConfig, proxyConfig, saveConfig } from './config'
+import { loadConfig, saveConfig, setupNetwork } from './config'
 import { acquireLock } from './lock'
 import { PanelError } from './errors'
 import { requestContext, setSession } from './request-context'
+import { provisionNetwork } from './provision'
+import type { SetupServerInput } from '../types'
 
 const failures: number[] = []
 
-export async function setupPanel(username: string, password: string, kind: 'velocity' | 'bungeecord') {
+export async function setupPanel(username: string, password: string, kind: 'velocity' | 'bungeecord', backends: SetupServerInput[] = []) {
   const context = requestContext()
   if (readAccount(context.root)) throw new PanelError('Setup is already complete. Sign in instead.')
   validateCredentials(username, password)
@@ -18,11 +20,14 @@ export async function setupPanel(username: string, password: string, kind: 'velo
   const release = acquireLock(context.root)
   try {
     if (existsSync(resolve(context.root, 'panel.json'))) {
+      if (!Array.isArray(backends) || backends.length) throw new PanelError('An existing network is being preserved. Server changes are not part of account-only setup.')
       const servers = loadConfig(context.root)
       if (servers.find((server) => server.kind !== 'paper')?.kind !== kind) throw new PanelError('The existing network uses a different proxy type. Existing server data will not be overwritten.')
     } else {
       // This is the only initial server creation path: explicit admin setup.
-      saveConfig(context.root, [proxyConfig(kind)])
+      const servers = setupNetwork(kind, backends)
+      saveConfig(context.root, servers)
+      provisionNetwork(context.root, servers)
     }
     const account = createAccount(context.root, username, password)
     setSession(account)

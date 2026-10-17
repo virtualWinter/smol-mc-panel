@@ -6,7 +6,7 @@ import { readAccount } from './server/accounts'
 import { requestContext } from './server/request-context'
 import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { loadConfig } from './server/config'
+import { javaVersions, loadConfig } from './server/config'
 import SetupForm from './components/SetupForm'
 import LoginForm from './components/LoginForm'
 
@@ -14,7 +14,7 @@ export default function App({ url }: { url: string }) {
   const root = dataRoot()
   if (!readAccount(root)) {
     const proxy = existsSync(resolve(root, 'panel.json')) ? loadConfig(root).find((server) => server.kind !== 'paper') : undefined
-    return <Shell><SetupForm existingProxy={proxy?.kind === 'paper' ? undefined : proxy?.kind} /></Shell>
+    return <Shell><SetupForm existingProxy={proxy?.kind === 'paper' ? undefined : proxy?.kind} javaVersions={javaVersions} /></Shell>
   }
   if (!requestContext().user) return <Shell><LoginForm /></Shell>
   const path = new URL(url).pathname.split('/').filter(Boolean)

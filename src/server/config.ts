@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import type { Server } from '../types'
+import type { Server, SetupServerInput } from '../types'
 import { PanelError } from './errors'
 
 export type ServerConfig = Omit<Server, 'installed' | 'jarVersion' | 'download' | 'startupIssue' | 'eulaAccepted' | 'status' | 'memory' | 'players' | 'cpu' | 'logs' | 'logOffset'>
@@ -14,6 +14,21 @@ export function proxyConfig(kind: 'velocity' | 'bungeecord'): ServerConfig {
     minMemory: 256, maxMemory: 1024, workingDirectory: 'servers/proxy',
     stopCommand: kind === 'velocity' ? 'shutdown' : 'end', autoStart: true, restartOnCrash: true,
   }
+}
+
+export function setupNetwork(kind: 'velocity' | 'bungeecord', backends: SetupServerInput[]): ServerConfig[] {
+  if (!Array.isArray(backends) || backends.length < 1 || backends.length > 20) throw new PanelError('Add between 1 and 20 Paper servers during setup.')
+  const servers: ServerConfig[] = [proxyConfig(kind), ...backends.map((input): ServerConfig => {
+    if (!input || typeof input.id !== 'string' || typeof input.name !== 'string' || !input.name.trim() || input.name.length > 80 || !Number.isInteger(input.port) || !Number.isInteger(input.maxMemory)) throw new PanelError('Each server needs a valid ID, name, port, and memory limit.')
+    return {
+      id: input.id.trim(), name: input.name.trim(), kind: 'paper', address: `127.0.0.1:${input.port}`,
+      workingDirectory: `servers/${input.id.trim()}`, javaVersion: input.javaVersion,
+      jarFile: 'server.jar', startupCommand: 'java -Xms{{MIN_MEMORY}}M -Xmx{{MAX_MEMORY}}M -jar {{JAR_FILE}} nogui',
+      minMemory: 256, maxMemory: input.maxMemory, stopCommand: 'stop', autoStart: true, restartOnCrash: true,
+    }
+  })]
+  validateNetwork(servers)
+  return servers
 }
 
 export function validateRelativePath(path: string, allowEmpty = false) {

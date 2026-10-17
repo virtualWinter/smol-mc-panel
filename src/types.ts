@@ -26,6 +26,13 @@ export interface Server {
 }
 
 export interface ServerProps { server: Server }
+export interface SetupServerInput {
+  id: string
+  name: string
+  port: number
+  maxMemory: number
+  javaVersion: string
+}
 export interface ServerFile { name: string; size: string; directory?: boolean; modified?: string }
 export interface Backup { id: string; name: string; created: string; size: string }
 
