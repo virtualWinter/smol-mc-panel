@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { Alert, Box, Button, Stack, Typography } from '@mui/material'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
-import { useMock } from '../data/MockProvider'
+import { usePanel } from '../data/usePanel'
 import ServerStats from './ServerStats'
 import ServerConsole from './ServerConsole'
 import ServerFiles from './ServerFiles'
@@ -13,7 +13,7 @@ import ServerGraphs from './ServerGraphs'
 import ServerHeader from './ServerHeader'
 
 export default function ServerPage({ serverId, page }: { serverId: string; page: string }) {
-  const { servers, powerServer } = useMock()
+  const { servers, powerServer } = usePanel()
   const [error, setError] = useState('')
   const server = servers.find((item) => item.id === serverId)
   const power = (action: 'Start' | 'Stop' | 'Restart') => { setError(''); void powerServer(serverId, action).catch((error: unknown) => setError(String(error))) }
@@ -25,6 +25,7 @@ export default function ServerPage({ serverId, page }: { serverId: string; page:
       {!server ? <Typography component="h1" variant="h4">Server not found</Typography> : (
         <>
           <ServerHeader server={server} page={page} />
+          {!server.installed && <Alert severity="info">Upload {server.jarFile} from the official {server.kind === 'velocity' ? 'Velocity' : 'Paper'} downloads in Files, then start the server.</Alert>}
           {page === 'files' ? <ServerFiles server={server} /> : page === 'backups' ? <ServerBackups server={server} /> : page === 'settings' ? <ServerSettings server={server} /> : page !== '' ? <Typography color="text.secondary">Page not found</Typography> : (
           <Stack spacing={2}>
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', md: 'minmax(0, 1fr) 260px' }, gap: 2 }}>

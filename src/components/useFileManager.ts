@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import type { DragEvent } from 'react'
-import { useMock } from '../data/MockProvider'
+import { usePanel } from '../data/usePanel'
 
 const dragType = 'application/x-smol-file'
 
 export default function useFileManager(serverId: string) {
-  const { files, moveFile, uploadFiles, saveFile } = useMock()
+  const { files, filePath, moveFile, uploadFiles, saveFile, readFile } = usePanel()
   const entries = files[serverId] ?? []
   const [notice, setNotice] = useState('')
   const [target, setTarget] = useState<string | null>(null)
@@ -45,5 +45,5 @@ export default function useFileManager(serverId: string) {
     onDragStart: (event: DragEvent) => { event.dataTransfer.setData(dragType, path); event.dataTransfer.effectAllowed = 'move' },
     onDragEnd: () => setTarget(null),
   })
-  return { entries, saveFile, notice, setNotice, target, dropProps, dragProps }
+  return { entries, filePath, saveFile, readFile, notice, setNotice, target, dropProps, dragProps }
 }

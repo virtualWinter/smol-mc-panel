@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import { Button, Paper, Stack, Typography } from '@mui/material'
-import { useMock } from '../data/MockProvider'
+import { usePanel } from '../data/usePanel'
 
 import type { ServerProps } from '../types'
 
 export default function ServerBackups({ server }: ServerProps) {
-  const { backups: allBackups, createBackup, deleteBackup } = useMock()
+  const { backups: allBackups, createBackup, deleteBackup } = usePanel()
   const backups = allBackups[server.id] ?? []
   const [error, setError] = useState('')
   const run = (operation: Promise<void>) => { setError(''); void operation.catch((error: unknown) => setError(String(error))) }
@@ -25,7 +25,6 @@ export default function ServerBackups({ server }: ServerProps) {
           </Stack>
         </Paper>
       ))}
-      <Typography variant="caption" color="text.secondary">Mock backups · No actual files are backed up.</Typography>
     </Stack>
   )
 }

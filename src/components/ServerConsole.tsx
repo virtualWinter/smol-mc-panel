@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { useMock } from '../data/MockProvider'
+import { usePanel } from '../data/usePanel'
 import { Box, Paper } from '@mui/material'
 import type { Terminal } from '@xterm/xterm'
 import '@xterm/xterm/css/xterm.css'
@@ -17,7 +17,7 @@ interface ConsoleSession {
 }
 
 export default function ServerConsole({ server }: ServerProps) {
-  const { sendCommand } = useMock()
+  const { sendCommand } = usePanel()
   const containerRef = useRef<HTMLDivElement>(null)
   const sessionRef = useRef<ConsoleSession | null>(null)
   const latestRef = useRef({ server, sendCommand })
@@ -51,7 +51,7 @@ export default function ServerConsole({ server }: ServerProps) {
     const session: ConsoleSession = { terminal, line: '', cursor: 0, history: [], historyIndex: 0, draft: '', logCount: 0, draw: () => {} }
     sessionRef.current = session
     latestRef.current.server.logs.forEach((line) => terminal.writeln(line))
-    session.logCount = latestRef.current.server.logs.length
+    session.logCount = latestRef.current.server.logOffset + latestRef.current.server.logs.length
     // Keep editable input on one terminal row, scrolling long commands horizontally.
     const draw = () => {
       const width = Math.max(1, terminal.cols - 3)
@@ -126,13 +126,13 @@ export default function ServerConsole({ server }: ServerProps) {
   useEffect(() => {
     const session = sessionRef.current
     if (!session) return
-    const newLogs = server.logs.slice(session.logCount)
+    const newLogs = server.logs.slice(Math.max(0, session.logCount - server.logOffset))
     if (!newLogs.length) return
     session.terminal.write('\r\x1b[2K')
     newLogs.forEach((line) => session.terminal.writeln(line))
-    session.logCount = server.logs.length
+    session.logCount = server.logOffset + server.logs.length
     session.draw()
-  }, [server.id, server.logs])
+  }, [server.id, server.logs, server.logOffset])
 
   return (
     <Paper variant="outlined" sx={{ overflow: 'hidden' }}>

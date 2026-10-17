@@ -11,17 +11,25 @@ import type { ServerProps, ServerFile } from '../types'
 
 function FileManager({ server }: ServerProps) {
   const [selected, setSelected] = useState<ServerFile | null>(null)
-  const { entries, saveFile, notice, setNotice, target, dropProps, dragProps } = useFileManager(server.id)
-  const [path, setPath] = useState<string[]>([])
+  const { entries, filePath, saveFile, readFile, notice, setNotice, target, dropProps, dragProps } = useFileManager(server.id)
+  const path = filePath.split('/').filter(Boolean)
+  const [content, setContent] = useState('')
+  const [opening, setOpening] = useState(false)
   const [search, setSearch] = useState('')
   const [view, setView] = useState<'list' | 'grid'>('list')
   const directory = path.join('/')
   const files = entries.filter((file) => file.path.split('/').slice(0, -1).join('/') === directory)
     .filter((file) => file.name.toLowerCase().includes(search.toLowerCase()))
     .sort((a, b) => Number(Boolean(b.directory)) - Number(Boolean(a.directory)) || a.name.localeCompare(b.name))
-  const navigate = (next: string[]) => { setPath(next); setSearch(''); setNotice('') }
+  const navigate = (next: string[]) => {
+    const url = new URL(window.location.href)
+    if (next.length) url.searchParams.set('path', next.join('/'))
+    else url.searchParams.delete('path')
+    history.pushState(null, '', url)
+    window.dispatchEvent(new Event('panel:navigate'))
+    setSearch(''); setNotice('')
+  }
   const fileKey = [...path, selected?.name].join('/')
-  const selectedEntry = entries.find((file) => file.path === fileKey)
 
   return (
     <Stack spacing={2.5}>
@@ -50,7 +58,10 @@ function FileManager({ server }: ServerProps) {
               setNotice('')
               if (file.directory) navigate([...path, file.name])
               else if (file.binary) setNotice('Binary files cannot be edited.')
-              else setSelected(file)
+              else if (!opening) {
+                setOpening(true)
+                void readFile(server.id, file.path).then((text) => { setContent(text); setSelected(file) }).catch((error: unknown) => setNotice(String(error))).finally(() => setOpening(false))
+              }
             }} {...dragProps(file.path)} {...(file.directory ? dropProps(file.path) : {})} style={{ outline: target === file.path ? '2px solid #90caf9' : undefined, outlineOffset: -2 }}>
               <Stack direction={view === 'grid' ? 'column' : 'row'} spacing={1} sx={{ alignItems: 'center', minWidth: 0, width: '100%', px: view === 'list' ? 2 : 0 }}>
                 <ListItemIcon sx={{ minWidth: 0, color: file.directory ? 'primary.main' : 'text.secondary', '& svg': { fontSize: view === 'grid' ? 36 : 20 } }}>{file.directory ? <FolderIcon /> : <DescriptionOutlinedIcon />}</ListItemIcon>
@@ -64,7 +75,7 @@ function FileManager({ server }: ServerProps) {
         {files.length === 0 && <Box sx={{ py: 5, textAlign: 'center' }}><Typography variant="body2" color="text.secondary">{search ? 'No matching files' : 'Empty directory'}</Typography>{search && <Button onClick={() => setSearch('')}>Clear search</Button>}</Box>}
       </Paper>
       {notice && <Typography variant="body2" color="text.secondary" role="status">{notice}</Typography>}
-      {selected && <FileEditor key={fileKey} name={selected.name} content={selectedEntry?.content ?? ''} onClose={() => setSelected(null)} onSave={async (content) => { await saveFile(server.id, fileKey, content); setSelected(null) }} />}
+      {selected && <FileEditor key={fileKey} name={selected.name} content={content} onClose={() => setSelected(null)} onSave={async (content) => { await saveFile(server.id, fileKey, content); setSelected(null) }} />}
     </Stack>
   )
 }

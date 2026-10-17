@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import { Box, Button, FormControlLabel, MenuItem, Paper, Stack, Switch, TextField, Typography } from '@mui/material'
-import { useMock } from '../data/MockProvider'
+import { usePanel } from '../data/usePanel'
 import type { ServerProps, Server } from '../types'
 import type { TextFieldProps } from '@mui/material'
 
 function SettingsForm({ server }: ServerProps) {
-  const { saveSettings, javaVersions } = useMock()
+  const { saveSettings, acceptEula, javaVersions } = usePanel()
   const [values, setValues] = useState(server)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
@@ -38,11 +38,17 @@ function SettingsForm({ server }: ServerProps) {
           <Typography component="h2" variant="subtitle1" sx={{ fontWeight: 600 }}>General</Typography>
           <Box sx={columns}>
             {field('name', 'Server name')}
-            {field('address', 'Address')}
+            {field('address', 'Address', { slotProps: { input: { readOnly: true } } })}
           </Box>
-          {field('workingDirectory', 'Working directory')}
+          {field('workingDirectory', 'Working directory', { slotProps: { input: { readOnly: true } } })}
         </Stack>
       </Paper>
+      {server.kind === 'paper' && !server.eulaAccepted && <Paper variant="outlined" sx={{ p: 2 }}>
+        <Stack spacing={1.5} sx={{ alignItems: 'flex-start' }}>
+          <Typography variant="body2">Paper requires acceptance of the <a href="https://aka.ms/MinecraftEULA" target="_blank" rel="noopener noreferrer" style={{ color: 'inherit' }}>Minecraft EULA</a>.</Typography>
+          <Button variant="outlined" onClick={() => { if (window.confirm('Have you read and do you agree to the Minecraft EULA?')) void acceptEula(server.id).catch((error: unknown) => setError(String(error))) }}>Accept EULA</Button>
+        </Stack>
+      </Paper>}
       <Paper variant="outlined" sx={{ p: 2 }}>
         <Stack spacing={2}>
           <Typography component="h2" variant="subtitle1" sx={{ fontWeight: 600 }}>Startup</Typography>

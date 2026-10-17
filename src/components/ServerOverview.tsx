@@ -7,10 +7,10 @@ import SortableServerRow from './SortableServerRow'
 import { closestCenter, DndContext, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { restrictToVerticalAxis } from './sortConstraints'
-import { useMock } from '../data/MockProvider'
+import { usePanel } from '../data/usePanel'
 
 export default function ServerOverview() {
-  const { servers, reorderServers } = useMock()
+  const { servers, reorderServers } = usePanel()
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }))
   const [search, setSearch] = useState('')
   const filtered = servers.filter((server) => `${server.name} ${server.address}`.toLowerCase().includes(search.toLowerCase()))

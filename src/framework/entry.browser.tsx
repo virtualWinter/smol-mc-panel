@@ -34,6 +34,14 @@ async function main() {
     if (window.location.href === url) root.render(payload.root)
   }
   window.addEventListener('popstate', () => { void navigate() })
+  window.addEventListener('panel:navigate', () => { void navigate() })
+  let refreshing = false
+  setInterval(() => {
+    if (document.visibilityState !== 'visible' || refreshing) return
+    refreshing = true
+    // Use the RSC transport for live snapshots; no REST endpoint is exposed.
+    void queue.then(navigate).catch((error: unknown) => console.warn('Panel refresh failed', error)).finally(() => { refreshing = false })
+  }, 2000)
   document.addEventListener('click', (event) => {
     const link = event.target instanceof Element ? event.target.closest('a') : null
     if (!(link instanceof HTMLAnchorElement) || link.origin !== location.origin || link.target || link.hasAttribute('download') || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || event.defaultPrevented) return

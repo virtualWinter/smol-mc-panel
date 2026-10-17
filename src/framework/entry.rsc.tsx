@@ -1,25 +1,31 @@
 import { createTemporaryReferenceSet, decodeReply, loadServerAction, renderToReadableStream } from '@vitejs/plugin-rsc/rsc/server'
 import type { ReactNode } from 'react'
 import App from '../App'
+import { authorizeRequest } from '../server/access'
+import { PanelError } from '../server/errors'
 
 export interface RscPayload {
   root: ReactNode
   result?: { ok: boolean; data: unknown }
 }
 
-export default { fetch: handleRequest }
+const server = { fetch: handleRequest }
+export default server
 
 async function handleRequest(request: Request): Promise<Response> {
   const url = new URL(request.url)
+  const denied = authorizeRequest(request)
+  if (denied) return denied
   if (!['GET', 'POST'].includes(request.method)) return new Response('Method not allowed', { status: 405 })
   let result: RscPayload['result']
   let temporaryReferences: ReturnType<typeof createTemporaryReferenceSet> | undefined
   const actionId = request.headers.get('x-rsc-action')
   if (request.method === 'POST') {
     // Server Functions are callable endpoints: reject cross-origin calls before dispatch.
-    if (request.headers.get('origin') !== url.origin || !actionId) return new Response('Forbidden', { status: 403 })
+    const expectedOrigin = process.env.PANEL_ORIGIN ? new URL(process.env.PANEL_ORIGIN).origin : url.origin
+    if (request.headers.get('origin') !== expectedOrigin || !actionId) return new Response('Forbidden', { status: 403 })
     const length = Number(request.headers.get('content-length'))
-    if (length > 1024 * 1024) return new Response('Request too large', { status: 413 })
+    if (length > 160 * 1024 * 1024) return new Response('Request too large', { status: 413 })
     try {
       const chunks: Uint8Array[] = []
       let size = 0
@@ -29,7 +35,7 @@ async function handleRequest(request: Request): Promise<Response> {
           const { done, value } = await reader.read()
           if (done) break
           size += value.byteLength
-          if (size > 1024 * 1024) { await reader.cancel(); return new Response('Request too large', { status: 413 }) }
+          if (size > 160 * 1024 * 1024) { await reader.cancel(); return new Response('Request too large', { status: 413 }) }
           chunks.push(value)
         }
       }
@@ -44,8 +50,9 @@ async function handleRequest(request: Request): Promise<Response> {
       const action = await loadServerAction(actionId)
       result = { ok: true, data: await action(...args) }
     } catch (error) {
-      console.error('Server Function failed', error)
-      result = { ok: false, data: 'Server operation failed.' }
+      const expected = error instanceof PanelError || (error instanceof Error && error.name === 'PanelError')
+      if (!expected) console.error('Server Function failed', error)
+      result = { ok: false, data: expected ? error.message : 'Server operation failed. See the panel logs for details.' }
     }
   }
   const root = <html lang="en"><head><meta charSet="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><title>smol-mc-panel</title></head><body style={{ margin: 0, background: '#121212', color: '#fff' }}><App url={url.href} /></body></html>

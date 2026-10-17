@@ -22,3 +22,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Local network state, worlds, JARs, backups, and credentials
+/network/
+.env
+.env.*
+!.env.example

@@ -4,7 +4,7 @@ import { StrictMode } from 'react'
 import type { ReactNode } from 'react'
 import { Alert, Container, CssBaseline, ThemeProvider, createTheme } from '@mui/material'
 import './index.css'
-import { MockProvider } from './data/MockProvider'
+import { PanelProvider } from './data/PanelProvider'
 import type { PanelState } from './types'
 import { Component } from 'react'
 
@@ -32,9 +32,9 @@ export default function Panel({ children, state }: { children: ReactNode; state:
   <StrictMode>
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <PanelErrorBoundary><MockProvider state={state}>
+      <PanelErrorBoundary><PanelProvider state={state}>
         <Container maxWidth="lg" sx={{ py: { xs: 3, sm: 5 }, px: { xs: 2, sm: 4 } }}>{children}</Container>
-      </MockProvider></PanelErrorBoundary>
+      </PanelProvider></PanelErrorBoundary>
     </ThemeProvider>
   </StrictMode>
   )

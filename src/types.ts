@@ -1,4 +1,7 @@
 export interface Server {
+  kind: 'velocity' | 'paper'
+  installed: boolean
+  eulaAccepted: boolean
   id: string
   name: string
   address: string
@@ -7,6 +10,7 @@ export interface Server {
   players: string
   cpu: string
   logs: string[]
+  logOffset: number
   javaVersion: string
   jarFile: string
   startupCommand: string
@@ -25,6 +29,7 @@ export interface Backup { id: string; name: string; created: string; size: strin
 export interface FileEntry extends ServerFile { path: string; content?: string; binary?: boolean }
 export interface MetricHistory { cpu: number[]; ram: number[]; players: number[]; tps: number[]; network?: number[] }
 export interface PanelState {
+  filePath: string
   javaVersions: string[]
   servers: Server[]
   files: Record<string, FileEntry[]>

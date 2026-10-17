@@ -1,28 +1,23 @@
 import 'server-only'
-import { networkServers, serverFiles, serverBackups, metricHistory, javaVersions } from './mockData'
-import type { PanelState } from '../types'
+import { resolve } from 'node:path'
+import { NetworkRuntime } from './runtime'
 
-const globalStore = globalThis as typeof globalThis & { panelState?: PanelState }
-export const state = globalStore.panelState ??= {
-  servers: structuredClone(networkServers),
-  files: Object.fromEntries(Object.entries(serverFiles).map(([id, files]) => [id, files.map((file) => ({ ...file, path: file.name, binary: file.name.endsWith('.jar') }))])),
-  backups: structuredClone(serverBackups),
-  metrics: structuredClone(metricHistory),
-  javaVersions,
-}
-state.javaVersions ??= javaVersions
+const globalStore = globalThis as typeof globalThis & { networkRuntime?: NetworkRuntime }
 
-export function snapshot(): PanelState { return structuredClone(state) }
-export function findServer(id: string) {
-  const server = state.servers.find((item) => item.id === id)
-  if (!server) throw new Error('Server not found')
-  return server
+export function runtime(): NetworkRuntime {
+  if (!globalStore.networkRuntime) {
+    const network = new NetworkRuntime(resolve(process.env.PANEL_DATA_DIR || 'network'))
+    globalStore.networkRuntime = network
+    let stopping = false
+    const stop = () => {
+      if (stopping) return
+      stopping = true
+      void network.shutdown().finally(() => process.exit(0))
+    }
+    process.once('SIGTERM', stop)
+    process.once('SIGINT', stop)
+  }
+  return globalStore.networkRuntime
 }
-export function validatePath(path: string) {
-  if (typeof path !== 'string' || path.length > 1024 || path.includes('\\') || path.includes('\0') || path.startsWith('/') || path.split('/').some((part) => part === '..' || part === '.')) throw new Error('Invalid path')
-}
-export function directoryExists(id: string, path: string) {
-  findServer(id)
-  validatePath(path)
-  if (path && !state.files[id].some((file) => file.path === path && file.directory)) throw new Error('Directory not found')
-}
+
+export function snapshot(url: string) { return runtime().snapshot(url) }
