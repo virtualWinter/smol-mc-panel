@@ -14,15 +14,9 @@ export function javaMajor(executable: string): number | undefined {
   return value ? Number(value) : undefined
 }
 
-export function localJava(root: string, major: number): string | undefined {
-  const override = process.env[`JAVA_${major}_BIN`]
-  if (override) {
-    if (javaMajor(override) !== major) throw new PanelError(`JAVA_${major}_BIN does not point to a working Java ${major} executable.`)
-    return override
-  }
+export function managedJava(root: string, major: number): string | undefined {
   const managed = safePath(root, `java-${major}/bin/java`)
   if (existsSync(managed) && javaMajor(managed) === major) return managed
-  if (javaMajor('java') === major) return 'java'
 }
 
 async function fetchArchive(url: string, request: typeof fetch, signal: AbortSignal) {
@@ -52,7 +46,7 @@ interface JavaOptions {
 
 export async function installJava({ root, major, request = fetch, onProgress }: JavaOptions): Promise<string> {
   if (![17, 21, 25].includes(major)) throw new PanelError('Unsupported Java version.')
-  if (process.platform !== 'linux' || !['x64', 'arm64'].includes(process.arch)) throw new PanelError(`Automatic Java installation is supported on Linux x64/arm64. Configure JAVA_${major}_BIN on this platform.`)
+  if (process.platform !== 'linux' || !['x64', 'arm64'].includes(process.arch)) throw new PanelError('Panel-managed Java currently supports Linux x64/arm64.')
   mkdirSync(root, { recursive: true, mode: 0o700 })
   const target = safePath(root, `java-${major}`)
   const executable = resolve(target, 'bin/java')

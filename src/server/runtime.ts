@@ -14,7 +14,7 @@ import { startupArgs } from './startup'
 import type { Backup, DownloadProgressState, MetricHistory, PanelState, Server } from '../types'
 import { acquireLock } from './lock'
 import { installedSource, reinstallJar } from './downloads'
-import { installJava, localJava } from './java'
+import { installJava, managedJava } from './java'
 
 const execute = promisify(execFile)
 
@@ -111,7 +111,7 @@ export class NetworkRuntime {
     if (this.javaExecutables.has(major)) return
     let job = this.javaJobs.get(major)
     if (!job) {
-      const local = localJava(this.root, major)
+      const local = managedJava(this.root, major)
       if (local) { this.javaExecutables.set(major, local); return }
       job = { promise: Promise.resolve(''), listeners: new Set() }
       const current = job

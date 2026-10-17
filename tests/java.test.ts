@@ -4,7 +4,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSyn
 import { resolve } from 'node:path'
 import test from 'node:test'
 import { c as archive } from 'tar'
-import { installJava, javaMajor, localJava } from '../src/server/java'
+import { installJava, javaMajor, managedJava } from '../src/server/java'
 import type { DownloadProgressState } from '../src/types'
 
 async function fixture(root: string, major = 21, unsafeLink = false) {
@@ -76,12 +76,12 @@ test('Java executable verification rejects the wrong major version', async () =>
   } finally { rmSync(root, { recursive: true, force: true }) }
 })
 
-test('invalid explicit Java overrides report an error rather than silently downloading a replacement', () => {
+test('system Java and JAVA_21_BIN never replace a panel-managed Java installation', () => {
   const root = mkdtempSync('/tmp/opencode/java-override-')
   const previous = process.env.JAVA_21_BIN
   try {
     process.env.JAVA_21_BIN = process.execPath
-    assert.throws(() => localJava(root, 21), /JAVA_21_BIN/u)
+    assert.equal(managedJava(root, 21), undefined)
   } finally {
     if (previous === undefined) delete process.env.JAVA_21_BIN; else process.env.JAVA_21_BIN = previous
     rmSync(root, { recursive: true, force: true })

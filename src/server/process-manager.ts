@@ -63,12 +63,12 @@ export class ProcessManager {
     item.intentionalStop = false
     item.lastTps = undefined
     item.status = 'Starting'
-    const major = config.javaVersion.split(' ')[1]
-    const executable = this.options.executable?.(config) ?? process.env[`JAVA_${major}_BIN`] ?? 'java'
+    const executable = this.options.executable?.(config)
+    if (!executable && !this.options.launch) { item.status = 'Offline'; throw new PanelError('The panel-managed Java runtime is not ready.') }
     this.log(config.id, `[Panel] Starting ${config.name} with ${config.javaVersion}.`)
     const launch = this.options.launch ?? ((java, args, cwd) => spawn(java, args, { cwd, stdio: 'pipe', shell: false, env: { ...process.env, TERM: 'xterm-256color' } }))
     let child: ChildProcessWithoutNullStreams
-    try { child = launch(executable, args, this.options.directory(config)) }
+    try { child = launch(executable ?? '', args, this.options.directory(config)) }
     catch (error) { item.status = 'Offline'; throw error }
     item.child = child
     const decoders = [new StringDecoder('utf8'), new StringDecoder('utf8')]
@@ -110,7 +110,7 @@ export class ProcessManager {
         try { this.options.onProcessChange?.(); resolve() }
         catch { item.intentionalStop = true; child.kill('SIGTERM'); reject(new PanelError('Could not persist the process ID; the server was stopped.')) }
       })
-      child.once('error', () => reject(new PanelError(`Could not launch Java. Install ${config.javaVersion} or configure JAVA_${major}_BIN.`)))
+      child.once('error', () => reject(new PanelError(`Could not launch the panel-managed ${config.javaVersion} runtime.`)))
     })
   }
 
