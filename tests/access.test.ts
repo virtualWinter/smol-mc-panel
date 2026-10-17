@@ -1,16 +1,18 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { authorizeRequest } from '../src/server/access'
+import { requests, requireAdmin } from '../src/server/request-context'
 
-test('remote access requires credentials and configured passwords protect local access too', () => {
-  const previous = process.env.PANEL_PASSWORD
-  try {
-    delete process.env.PANEL_PASSWORD
-    assert.equal(authorizeRequest(new Request('http://localhost/')), undefined)
-    assert.equal(authorizeRequest(new Request('http://public.example/'))?.status, 403)
-    process.env.PANEL_PASSWORD = 'test-password'
-    assert.equal(authorizeRequest(new Request('http://localhost/'))?.status, 401)
-    const credentials = Buffer.from('admin:test-password').toString('base64')
-    assert.equal(authorizeRequest(new Request('http://localhost/', { headers: { Authorization: `Basic ${credentials}` } })), undefined)
-  } finally { if (previous === undefined) delete process.env.PANEL_PASSWORD; else process.env.PANEL_PASSWORD = previous }
+test('first-start setup is local-only; configured installations use the login layer', () => {
+  assert.equal(authorizeRequest(new Request('http://localhost/'), false), undefined)
+  assert.equal(authorizeRequest(new Request('http://public.example/'), false)?.status, 403)
+  assert.equal(authorizeRequest(new Request('http://localhost/', { headers: { 'x-forwarded-for': '1.2.3.4' } }), false)?.status, 403)
+  assert.equal(authorizeRequest(new Request('https://panel.example/'), true), undefined)
+})
+
+test('server operations require an authenticated request context', () => {
+  assert.throws(() => requireAdmin(), /authenticated/u)
+  const context = { root: '/unused', request: new Request('http://localhost/'), headers: new Headers() }
+  requests.run(context, () => assert.throws(() => requireAdmin(), /Sign in/u))
+  requests.run({ ...context, user: 'admin' }, () => assert.equal(requireAdmin(), 'admin'))
 })

@@ -27,15 +27,19 @@ const theme = createTheme({
   },
 })
 
-export default function Panel({ children, state }: { children: ReactNode; state: PanelState }) {
+export function Shell({ children }: { children: ReactNode }) {
   return (
   <StrictMode>
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <PanelErrorBoundary><PanelProvider state={state}>
+      <PanelErrorBoundary>
         <Container maxWidth="lg" sx={{ py: { xs: 3, sm: 5 }, px: { xs: 2, sm: 4 } }}>{children}</Container>
-      </PanelProvider></PanelErrorBoundary>
+      </PanelErrorBoundary>
     </ThemeProvider>
   </StrictMode>
   )
+}
+
+export default function Panel({ children, state }: { children: ReactNode; state: PanelState }) {
+  return <Shell><PanelProvider state={state}>{children}</PanelProvider></Shell>
 }

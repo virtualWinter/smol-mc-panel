@@ -3,9 +3,12 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { resolve } from 'node:path'
 import test from 'node:test'
 import { NetworkRuntime } from '../src/server/runtime'
+import { proxyConfig, saveConfig } from '../src/server/config'
+import { defaults } from './helpers'
 
 test('new network generates secure forwarding, requires JARs and EULA, and creates actual archives', async () => {
   const root = mkdtempSync('/tmp/opencode/network-runtime-')
+  saveConfig(root, defaults())
   const runtime = new NetworkRuntime(root, false)
   try {
     const snapshot = runtime.snapshot('http://localhost/proxy/files')
@@ -30,5 +33,21 @@ test('new network generates secure forwarding, requires JARs and EULA, and creat
     assert.equal(existsSync(resolve(root, 'backups/survival', `${backup.id}.tar.gz`)), true)
     runtime.deleteBackup('survival', backup.id)
     assert.equal(runtime.snapshot('http://localhost/survival/backups').backups.survival.length, 0)
+  } finally { await runtime.shutdown(); rmSync(root, { recursive: true, force: true }) }
+})
+
+test('explicit BungeeCord configuration provisions a proxy without inventing backend servers', async () => {
+  const root = mkdtempSync('/tmp/opencode/bungeecord-runtime-')
+  saveConfig(root, [proxyConfig('bungeecord')])
+  const runtime = new NetworkRuntime(root, false)
+  try {
+    const state = runtime.snapshot('http://localhost/proxy/files')
+    assert.equal(state.servers.length, 1)
+    assert.equal(state.servers[0].kind, 'bungeecord')
+    assert.equal(state.servers[0].eulaAccepted, true)
+    assert.equal(existsSync(resolve(root, 'servers/survival')), false)
+    assert.equal(existsSync(resolve(root, 'forwarding.secret')), false)
+    assert.ok(readFileSync(resolve(root, 'servers/proxy/config.yml'), 'utf8').includes('servers: {}'))
+    await assert.rejects(runtime.reinstall('proxy'), /manually|Upload the BungeeCord/u)
   } finally { await runtime.shutdown(); rmSync(root, { recursive: true, force: true }) }
 })

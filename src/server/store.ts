@@ -1,12 +1,18 @@
 import 'server-only'
 import { NetworkRuntime } from './runtime'
 import { prepareStorage } from './storage'
+import { requireAdmin } from './request-context'
 
-const globalStore = globalThis as typeof globalThis & { networkRuntime?: NetworkRuntime }
+const globalStore = globalThis as typeof globalThis & { networkRuntime?: NetworkRuntime; panelStorageRoot?: string }
+
+export function dataRoot() {
+  return globalStore.panelStorageRoot ??= prepareStorage(process.cwd(), process.env.PANEL_DATA_DIR)
+}
 
 export function runtime(): NetworkRuntime {
+  requireAdmin()
   if (!globalStore.networkRuntime) {
-    const network = new NetworkRuntime(prepareStorage(process.cwd(), process.env.PANEL_DATA_DIR))
+    const network = new NetworkRuntime(dataRoot())
     globalStore.networkRuntime = network
     let stopping = false
     const stop = () => {

@@ -58,7 +58,7 @@ export class NetworkRuntime {
       writeFileSync(`${pidFile}.tmp`, JSON.stringify(pids), { mode: 0o600 })
       renameSync(`${pidFile}.tmp`, pidFile)
     } })
-    for (const config of this.configs) this.metrics[config.id] = emptyMetrics(config.kind === 'velocity')
+    for (const config of this.configs) this.metrics[config.id] = emptyMetrics(config.kind !== 'paper')
     this.timer = setInterval(() => { void this.sample() }, 2000)
     this.timer.unref()
     if (autostart) {
@@ -89,7 +89,7 @@ export class NetworkRuntime {
   directory(id: string) { return serverDirectory(this.root, this.config(id).workingDirectory) }
   installed(id: string) { const path = safePath(this.directory(id), this.config(id).jarFile); return existsSync(path) && statSync(path).isFile() }
   eulaAccepted(id: string) {
-    if (this.config(id).kind === 'velocity') return true
+    if (this.config(id).kind !== 'paper') return true
     const path = safePath(this.directory(id), 'eula.txt')
     return existsSync(path) && /^eula\s*=\s*true\s*$/mu.test(readFileSync(path, 'utf8'))
   }
@@ -135,7 +135,7 @@ export class NetworkRuntime {
   }
 
   private async startEligible() {
-    for (const config of [...this.configs].sort((a, b) => Number(a.kind === 'velocity') - Number(b.kind === 'velocity'))) {
+    for (const config of [...this.configs].sort((a, b) => Number(a.kind !== 'paper') - Number(b.kind !== 'paper'))) {
       if (config.autoStart && this.installed(config.id) && this.eulaAccepted(config.id)) {
         try { await this.power(config.id, 'Start') } catch (error) { this.manager.log(config.id, `[Panel] Autostart skipped: ${String(error)}`) }
       }
@@ -191,6 +191,7 @@ export class NetworkRuntime {
 
   async reinstall(id: string) {
     const config = this.config(id)
+    if (config.kind === 'bungeecord') throw new PanelError('Upload the BungeeCord JAR in Files; automatic BungeeCord downloads are not supported.')
     await this.withWrite(id, async () => {
       this.manager.log(id, `[Panel] Downloading ${config.kind === 'velocity' ? 'Velocity' : 'Paper'} JAR.`)
       try {
@@ -272,7 +273,7 @@ export class NetworkRuntime {
     const filePath = request.searchParams.get('path') ?? ''
     const servers: Server[] = this.configs.map((config) => {
       const item = this.manager.get(config.id), history = this.metrics[config.id], players = this.playerCounts.get(config.id)
-      const source = installedSource(resolve(this.root, 'installations', `${config.id}.json`), config.kind === 'velocity' ? 'velocity' : 'paper', config.jarFile)
+      const source = config.kind === 'bungeecord' ? undefined : installedSource(resolve(this.root, 'installations', `${config.id}.json`), config.kind === 'velocity' ? 'velocity' : 'paper', config.jarFile)
       return { ...config, download: this.downloads[config.id] ? { ...this.downloads[config.id] } : undefined, jarVersion: source ? `${source.version} (build ${source.build})` : undefined, installed: this.installed(config.id), eulaAccepted: this.eulaAccepted(config.id), status: item.status, logs: [...item.logs], logOffset: item.logCount - item.logs.length, cpu: history.cpu.length ? `${history.cpu.at(-1)!.toFixed(1)}%` : '—', memory: history.ram.length ? `${history.ram.at(-1)!.toFixed(0)} / ${config.maxMemory} MiB` : `— / ${config.maxMemory} MiB`, players: players ? `${players.online} / ${players.max}` : '—' }
     })
     let files: PanelState['files'] = {}

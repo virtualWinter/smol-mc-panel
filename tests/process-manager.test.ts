@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process'
 import { once } from 'node:events'
 import { setTimeout as delay } from 'node:timers/promises'
 import test from 'node:test'
-import { defaults } from '../src/server/config'
+import { defaults } from './helpers'
 import { ProcessManager } from '../src/server/process-manager'
 
 test('process manager captures ANSI output, writes commands, prevents duplicates, and stops cleanly', async () => {

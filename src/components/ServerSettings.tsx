@@ -49,8 +49,8 @@ function SettingsForm({ server }: ServerProps) {
       <Paper variant="outlined" sx={{ p: 2 }}>
         <Stack spacing={1.5} sx={{ alignItems: 'flex-start' }}>
           <Typography component="h2" variant="subtitle1" sx={{ fontWeight: 600 }}>Server JAR</Typography>
-          <Typography variant="body2" color="text.secondary">{server.jarVersion ?? 'Latest stable release on first install'}. Worlds, plugins, and settings are kept.</Typography>
-          <Button type="button" variant="outlined" disabled={reinstalling || downloadActive || server.status !== 'Offline'} onClick={async () => {
+          <Typography variant="body2" color="text.secondary">{server.kind === 'bungeecord' ? 'Upload the BungeeCord JAR in Files.' : `${server.jarVersion ?? 'Latest stable release on first install'}. Worlds, plugins, and settings are kept.`}</Typography>
+          <Button type="button" variant="outlined" disabled={server.kind === 'bungeecord' || reinstalling || downloadActive || server.status !== 'Offline'} onClick={async () => {
             const version = server.jarVersion ?? 'the latest stable release (this may change the Minecraft version and Java requirements; back up your worlds first)'
             if (!window.confirm(`Download ${version} and replace ${server.jarFile}? Other server files will not be deleted.`)) return
             setReinstalling(true); setError('')

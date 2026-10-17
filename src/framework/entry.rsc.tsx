@@ -3,6 +3,9 @@ import type { ReactNode } from 'react'
 import App from '../App'
 import { authorizeRequest } from '../server/access'
 import { PanelError } from '../server/errors'
+import { dataRoot } from '../server/store'
+import { readAccount, sessionFromRequest } from '../server/accounts'
+import { requests } from '../server/request-context'
 
 export interface RscPayload {
   root: ReactNode
@@ -13,9 +16,20 @@ const server = { fetch: handleRequest }
 export default server
 
 async function handleRequest(request: Request): Promise<Response> {
-  const url = new URL(request.url)
-  const denied = authorizeRequest(request)
+  const root = dataRoot()
+  const account = readAccount(root)
+  const denied = authorizeRequest(request, Boolean(account))
   if (denied) return denied
+  const context = { request, root, user: sessionFromRequest(account, request), headers: new Headers() }
+  return requests.run(context, async () => {
+    const response = await renderRequest(request)
+    context.headers.forEach((value, key) => response.headers.append(key, value))
+    return response
+  })
+}
+
+async function renderRequest(request: Request): Promise<Response> {
+  const url = new URL(request.url)
   if (!['GET', 'POST'].includes(request.method)) return new Response('Method not allowed', { status: 405 })
   let result: RscPayload['result']
   let temporaryReferences: ReturnType<typeof createTemporaryReferenceSet> | undefined

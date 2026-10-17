@@ -9,7 +9,7 @@ export default function ServerCard({ server }: ServerProps) {
     <Box component="a" href={`/${server.id}`} sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr) auto', sm: 'minmax(0, 1fr) 140px 110px 24px' }, alignItems: 'center', gap: 2.5, px: 2.5, py: 2.5, color: 'inherit', textDecoration: 'none', '&:hover': { bgcolor: 'action.hover' }, '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: -2 } }}>
       <Stack direction="row" spacing={2} sx={{ alignItems: 'center', minWidth: 0 }}>
         <Box sx={{ position: 'relative', display: 'flex', color: 'text.secondary', flexShrink: 0 }}>
-          {server.kind === 'velocity' ? <HubOutlinedIcon fontSize="small" titleAccess="Proxy" /> : <DnsOutlinedIcon fontSize="small" titleAccess="Server" />}
+          {server.kind !== 'paper' ? <HubOutlinedIcon fontSize="small" titleAccess="Proxy" /> : <DnsOutlinedIcon fontSize="small" titleAccess="Server" />}
           <Box role="img" aria-label={server.status} sx={{ position: 'absolute', right: -3, bottom: -2, width: 7, height: 7, borderRadius: '50%', bgcolor: server.status === 'Online' ? 'success.main' : 'text.disabled', outline: '2px solid', outlineColor: 'background.paper' }} />
         </Box>
         <Box sx={{ minWidth: 0 }}>

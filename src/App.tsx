@@ -1,9 +1,22 @@
-import Panel from './main'
+import Panel, { Shell } from './main'
 import ServerOverview from './components/ServerOverview'
 import ServerPage from './components/ServerPage'
-import { snapshot } from './server/store'
+import { dataRoot, snapshot } from './server/store'
+import { readAccount } from './server/accounts'
+import { requestContext } from './server/request-context'
+import { existsSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { loadConfig } from './server/config'
+import SetupForm from './components/SetupForm'
+import LoginForm from './components/LoginForm'
 
 export default function App({ url }: { url: string }) {
+  const root = dataRoot()
+  if (!readAccount(root)) {
+    const proxy = existsSync(resolve(root, 'panel.json')) ? loadConfig(root).find((server) => server.kind !== 'paper') : undefined
+    return <Shell><SetupForm existingProxy={proxy?.kind === 'paper' ? undefined : proxy?.kind} /></Shell>
+  }
+  if (!requestContext().user) return <Shell><LoginForm /></Shell>
   const path = new URL(url).pathname.split('/').filter(Boolean)
   return (
     <Panel state={snapshot(url)}>

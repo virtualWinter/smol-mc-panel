@@ -27,7 +27,7 @@ export default function ServerPage({ serverId, page }: { serverId: string; page:
         <>
           <ServerHeader server={server} page={page} />
           {server.download && !['complete'].includes(server.download.phase) && (page !== 'settings' || server.download.label?.startsWith('Java')) && <Paper variant="outlined" sx={{ p: 2 }}><DownloadProgress progress={server.download} /></Paper>}
-          {!server.installed && <Alert severity="info">Upload {server.jarFile} from the official {server.kind === 'velocity' ? 'Velocity' : 'Paper'} downloads in Files, then start the server.</Alert>}
+          {!server.installed && <Alert severity="info">Upload {server.jarFile} from the official {server.kind === 'velocity' ? 'Velocity' : server.kind === 'bungeecord' ? 'BungeeCord' : 'Paper'} downloads in Files, then start the server.</Alert>}
           {page === 'files' ? <ServerFiles server={server} /> : page === 'backups' ? <ServerBackups server={server} /> : page === 'settings' ? <ServerSettings server={server} /> : page !== '' ? <Typography color="text.secondary">Page not found</Typography> : (
           <Stack spacing={2}>
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', md: 'minmax(0, 1fr) 260px' }, gap: 2 }}>

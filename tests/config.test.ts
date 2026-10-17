@@ -2,13 +2,16 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import test from 'node:test'
-import { defaults, loadConfig, saveConfig, validateNetwork, validateRelativePath } from '../src/server/config'
+import { loadConfig, saveConfig, validateNetwork, validateRelativePath } from '../src/server/config'
+import { defaults } from './helpers'
 import { safePath } from '../src/server/paths'
 import { startupArgs } from '../src/server/startup'
 
 test('configuration persists order and settings without losing the single proxy', () => {
   const root = mkdtempSync('/tmp/opencode/network-config-')
   try {
+    assert.throws(() => loadConfig(root), /first-start setup/u)
+    saveConfig(root, defaults())
     const configs = loadConfig(root)
     assert.equal(configs.filter((server) => server.kind === 'velocity').length, 1)
     configs.reverse(); configs[0].name = 'Build server'
