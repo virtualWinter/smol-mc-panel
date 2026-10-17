@@ -74,15 +74,20 @@ test('PaperMC downloads require an identifying contact User-Agent', async () => 
 const bungeeBase = 'https://hub.spigotmc.org/jenkins/job/BungeeCord'
 const bungeeJar = `${bungeeBase}/2104/artifact/bootstrap/target/BungeeCord.jar`
 
-function bungeeRequest(calls: string[], corrupt = false, fingerprint = true): typeof fetch {
+function bungeeRequest(calls: string[], corrupt = false, fingerprint = true, recorded = false): typeof fetch {
   return async (input, options) => {
     const url = String(input)
     calls.push(`${options?.method ?? 'GET'} ${url}`)
     assert.equal(options?.redirect, 'error')
     if (url.startsWith(`${bungeeBase}/lastSuccessfulBuild/api/json?`)) return Response.json({
       number: 2104, result: 'SUCCESS', artifacts: [{ fileName: 'BungeeCord.jar', relativePath: 'bootstrap/target/BungeeCord.jar' }],
-      fingerprint: fingerprint ? [{ fileName: 'net.md-5:BungeeCord.jar', hash: createHash('md5').update(body).digest('hex') }] : [],
+      // Regression: the Maven fingerprint is NOT the archived/shaded JAR hash.
+      fingerprint: [{ fileName: 'net.md-5:BungeeCord.jar', hash: '0'.repeat(32) }],
     })
+    if (url === `${bungeeJar}/*fingerprint*/`) {
+      const hash = createHash('md5').update(body).digest('hex')
+      return new Response(fingerprint ? (recorded ? `<div class="md5sum">MD5: ${hash}</div>` : `<h1>No matching record found</h1><p>The fingerprint ${hash} did not match any of the recorded data.</p>`) : '<html>No fingerprint available</html>', { headers: { 'Content-Type': 'text/html;charset=utf-8' } })
+    }
     assert.equal(url, bungeeJar)
     if (options?.method === 'HEAD') return new Response(null, { headers: { 'Content-Length': String(body.length) } })
     const bytes = Uint8Array.from(body)
@@ -125,7 +130,16 @@ test('BungeeCord refuses an unverified artifact when Jenkins has no fingerprint'
   try {
     const calls: string[] = []
     await assert.rejects(reinstallJar({ directory: root, jarFile: 'bungeecord.jar', project: 'bungeecord', manifest: resolve(root, 'installations/proxy.json'), request: bungeeRequest(calls, false, false), userAgent }), /fingerprint/u)
-    assert.equal(calls.length, 1)
+    assert.equal(calls.length, 3)
+    assert.equal(calls.includes(`GET ${bungeeJar}`), false)
     assert.deepEqual(readdirSync(root), [])
+  } finally { rmSync(root, { recursive: true, force: true }) }
+})
+
+test('BungeeCord also supports Jenkins pages with a recorded archived fingerprint', async () => {
+  const root = mkdtempSync('/tmp/opencode/bungee-recorded-fingerprint-')
+  try {
+    const source = await reinstallJar({ directory: root, jarFile: 'bungeecord.jar', project: 'bungeecord', manifest: resolve(root, 'installations/proxy.json'), request: bungeeRequest([], false, true, true), userAgent })
+    assert.equal(source.md5, createHash('md5').update(body).digest('hex'))
   } finally { rmSync(root, { recursive: true, force: true }) }
 })

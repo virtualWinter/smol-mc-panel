@@ -36,31 +36,38 @@ export function installedSource(manifest: string, project: string, jarFile: stri
   } catch { /* Unknown/manual installations require an explicit latest-stable confirmation. */ }
 }
 
-async function readJson(response: Response): Promise<unknown> {
+async function readMetadata(response: Response, limit = 8 * 1024 * 1024): Promise<string> {
   if (!response.ok || !response.body) throw new PanelError(`Download metadata request failed (${response.status}).`)
   let size = 0
   const chunks: Buffer[] = []
   for await (const chunk of response.body) {
     size += chunk.length
-    if (size > 8 * 1024 * 1024) throw new PanelError('Download metadata response was too large.')
+    if (size > limit) throw new PanelError('Download metadata response was too large.')
     chunks.push(Buffer.from(chunk))
   }
-  return JSON.parse(Buffer.concat(chunks).toString('utf8'))
+  return Buffer.concat(chunks).toString('utf8')
 }
 
 async function latestSource(project: JarSource['project'], jarFile: string, request: typeof fetch, userAgent: string): Promise<JarSource> {
-  const get = (url: string) => request(url, { headers: { 'User-Agent': userAgent }, redirect: 'error', signal: AbortSignal.timeout(15_000) }).then(readJson)
+  const get = (url: string) => request(url, { headers: { 'User-Agent': userAgent }, redirect: 'error', signal: AbortSignal.timeout(15_000) }).then(readMetadata).then((text) => JSON.parse(text) as unknown)
   if (project === 'bungeecord') {
-    const data = await get(`${bungeeApi}/lastSuccessfulBuild/api/json?tree=number,result,artifacts[fileName,relativePath],fingerprint[fileName,hash]`) as {
-      number: number; result: string; artifacts?: { fileName: string; relativePath: string }[]; fingerprint?: { fileName: string; hash: string }[]
+    const data = await get(`${bungeeApi}/lastSuccessfulBuild/api/json?tree=number,result,artifacts[fileName,relativePath]`) as {
+      number: number; result: string; artifacts?: { fileName: string; relativePath: string }[]
     }
     if (data.result !== 'SUCCESS' || !Number.isInteger(data.number) || data.number < 1 || !Array.isArray(data.artifacts) || !data.artifacts.some((artifact) => artifact.fileName === 'BungeeCord.jar' && artifact.relativePath === 'bootstrap/target/BungeeCord.jar')) throw new PanelError('No successful BungeeCord JAR build was found.')
-    const md5 = Array.isArray(data.fingerprint) ? data.fingerprint.find((item) => item.fileName === 'BungeeCord.jar' || item.fileName === 'net.md-5:BungeeCord.jar')?.hash : undefined
-    if (!md5 || !/^[a-f0-9]{32}$/u.test(md5)) throw new PanelError('BungeeCord did not publish an artifact fingerprint; the existing JAR was not changed.')
     const url = `${bungeeApi}/${data.number}/artifact/bootstrap/target/BungeeCord.jar`
-    const head = await request(url, { method: 'HEAD', headers: { 'User-Agent': userAgent }, redirect: 'error', signal: AbortSignal.timeout(15_000) })
+    const [head, fingerprint] = await Promise.all([
+      request(url, { method: 'HEAD', headers: { 'User-Agent': userAgent }, redirect: 'error', signal: AbortSignal.timeout(15_000) }),
+      request(`${url}/*fingerprint*/`, { headers: { 'User-Agent': userAgent }, redirect: 'error', signal: AbortSignal.timeout(30_000) }),
+    ])
     if (!head.ok) throw new PanelError(`Could not inspect the BungeeCord JAR (${head.status}).`)
-    return validateSource({ project, jarFile, version: 'BungeeCord', build: data.number, url, md5, size: Number(head.headers.get('content-length')) })
+    // Maven's build fingerprint can describe a pre-shaded JAR. This endpoint
+    // computes the hash of the actual archived artifact instead.
+    if (!fingerprint.headers.get('content-type')?.includes('text/html')) throw new PanelError('BungeeCord did not publish a readable archived artifact fingerprint.')
+    const page = (await readMetadata(fingerprint, 1024 * 1024)).replace(/<[^>]*>/gu, ' ')
+    const md5 = page.match(/\bMD5:\s*([a-f0-9]{32})\b/iu)?.[1] ?? page.match(/\bThe fingerprint\s+([a-f0-9]{32})\b/iu)?.[1]
+    if (!md5) throw new PanelError('BungeeCord did not publish an archived artifact fingerprint; the existing JAR was not changed.')
+    return validateSource({ project, jarFile, version: 'BungeeCord', build: data.number, url, md5: md5.toLowerCase(), size: Number(head.headers.get('content-length')) })
   }
   const data = await get(`${api}/${project}`) as { versions?: Record<string, string[]> }
   if (!data.versions || typeof data.versions !== 'object') throw new PanelError('PaperMC returned an invalid version list.')
