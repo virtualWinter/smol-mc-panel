@@ -1,11 +1,15 @@
 import { useState } from 'react'
 import { Divider, InputAdornment, Paper, Stack, TextField, Typography } from '@mui/material'
 import SearchIcon from '@mui/icons-material/Search'
-import ServerCard from './ServerCard'
+import SortableServerRow from './SortableServerRow'
+import { closestCenter, DndContext, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
+import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import { restrictToVerticalAxis } from './sortConstraints'
 import { useMock } from '../data/MockProvider'
 
 export default function ServerOverview() {
-  const { servers } = useMock()
+  const { servers, reorderServers } = useMock()
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }))
   const [search, setSearch] = useState('')
   const filtered = servers.filter((server) => `${server.name} ${server.address}`.toLowerCase().includes(search.toLowerCase()))
 
@@ -26,10 +30,14 @@ export default function ServerOverview() {
         />
       </Stack>
       <Paper variant="outlined" sx={{ overflow: 'hidden' }}>
+        <DndContext sensors={sensors} collisionDetection={closestCenter} modifiers={[restrictToVerticalAxis]} onDragEnd={({ active, over }) => { if (over) reorderServers(String(active.id), String(over.id)) }}>
+        <SortableContext items={filtered.map((server) => server.id)} strategy={verticalListSortingStrategy}>
         <Stack divider={<Divider />}>
-          {filtered.map((server) => <ServerCard key={server.id} server={server} />)}
+          {filtered.map((server) => <SortableServerRow key={server.id} server={server} />)}
           {filtered.length === 0 && <Typography color="text.secondary" sx={{ py: 4, textAlign: 'center' }}>No matches</Typography>}
         </Stack>
+        </SortableContext>
+        </DndContext>
       </Paper>
     </Stack>
   )
