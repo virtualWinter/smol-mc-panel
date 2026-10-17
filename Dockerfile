@@ -2,7 +2,7 @@
 # The panel downloads its own JDKs into the persistent /data volume at first use.
 FROM node:26-bookworm-slim AS build
 ENV PNPM_VERSION=12.14.0
-RUN corepack enable && corepack prepare pnpm@$PNPM_VERSION --activate
+RUN npm install -g pnpm@$PNPM_VERSION && pnpm config set store-dir ~/.pnpm-store
 WORKDIR /app
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
