@@ -1,12 +1,12 @@
 import 'server-only'
-import { resolve } from 'node:path'
 import { NetworkRuntime } from './runtime'
+import { prepareStorage } from './storage'
 
 const globalStore = globalThis as typeof globalThis & { networkRuntime?: NetworkRuntime }
 
 export function runtime(): NetworkRuntime {
   if (!globalStore.networkRuntime) {
-    const network = new NetworkRuntime(resolve(process.env.PANEL_DATA_DIR || 'network'))
+    const network = new NetworkRuntime(prepareStorage(process.cwd(), process.env.PANEL_DATA_DIR))
     globalStore.networkRuntime = network
     let stopping = false
     const stop = () => {

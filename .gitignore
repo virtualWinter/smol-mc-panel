@@ -25,6 +25,7 @@ dist-ssr
 
 # Local network state, worlds, JARs, backups, and credentials
 /network/
+/data/
 .env
 .env.*
 !.env.example

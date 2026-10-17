@@ -124,7 +124,7 @@ export class NetworkRuntime {
     const listener = (progress: DownloadProgressState) => { this.downloads[config.id] = progress }
     job.listeners.add(listener)
     if (job.progress) listener(job.progress)
-    this.manager.log(config.id, `[Panel] Preparing Java ${major} in network/java-${major}.`)
+    this.manager.log(config.id, `[Panel] Preparing Java ${major} in ${resolve(this.root, 'java', `java-${major}`)}.`)
     try { await job.promise }
     catch (error) {
       const message = error instanceof PanelError ? error.message : `Java ${major} installation failed.`

@@ -15,7 +15,7 @@ export function javaMajor(executable: string): number | undefined {
 }
 
 export function managedJava(root: string, major: number): string | undefined {
-  const managed = safePath(root, `java-${major}/bin/java`)
+  const managed = safePath(root, `java/java-${major}/bin/java`)
   if (existsSync(managed) && javaMajor(managed) === major) return managed
 }
 
@@ -48,13 +48,15 @@ export async function installJava({ root, major, request = fetch, onProgress }: 
   if (![17, 21, 25].includes(major)) throw new PanelError('Unsupported Java version.')
   if (process.platform !== 'linux' || !['x64', 'arm64'].includes(process.arch)) throw new PanelError('Panel-managed Java currently supports Linux x64/arm64.')
   mkdirSync(root, { recursive: true, mode: 0o700 })
-  const target = safePath(root, `java-${major}`)
+  const javaRoot = safePath(root, 'java')
+  mkdirSync(javaRoot, { recursive: true, mode: 0o700 })
+  const target = safePath(javaRoot, `java-${major}`)
   const executable = resolve(target, 'bin/java')
   if (existsSync(target)) {
-    if (javaMajor(safePath(root, `java-${major}/bin/java`)) === major) return executable
-    throw new PanelError(`network/java-${major} exists but is not a working Java ${major} installation. Repair or move it before retrying.`)
+    if (javaMajor(safePath(javaRoot, `java-${major}/bin/java`)) === major) return executable
+    throw new PanelError(`data/java/java-${major} exists but is not a working Java ${major} installation. Repair or move it before retrying.`)
   }
-  const staging = safePath(root, `.java-${major}-${randomUUID()}`)
+  const staging = safePath(javaRoot, `.java-${major}-${randomUUID()}`)
   const archive = `${staging}.tar.gz`
   const label = `Java ${major}`
   let received = 0, total = 0

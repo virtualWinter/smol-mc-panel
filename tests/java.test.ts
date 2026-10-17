@@ -32,18 +32,19 @@ function requestFor(bytes: Buffer, corrupt = false): typeof fetch {
   }
 }
 
-test('missing Java installs into network/java-21, reports progress, and reuses the verified installation', async () => {
+test('missing Java installs into data/java/java-21, reports progress, and reuses the verified installation', async () => {
   const root = mkdtempSync('/tmp/opencode/java-install-')
   try {
     const bytes = await fixture(root)
     const progress: DownloadProgressState[] = []
-    const network = resolve(root, 'network')
+    const network = resolve(root, 'data')
     const executable = await installJava({ root: network, major: 21, request: requestFor(bytes), onProgress: (value) => progress.push(value) })
-    assert.equal(executable, resolve(network, 'java-21/bin/java'))
+    assert.equal(executable, resolve(network, 'java/java-21/bin/java'))
     assert.equal(javaMajor(executable), 21)
     assert.ok(progress.some((value) => value.phase === 'extracting' && value.label === 'Java 21'))
     assert.equal(progress.at(-1)!.phase, 'complete')
-    assert.deepEqual(readdirSync(network), ['java-21'])
+    assert.deepEqual(readdirSync(network), ['java'])
+    assert.deepEqual(readdirSync(resolve(network, 'java')), ['java-21'])
     assert.equal(await installJava({ root: network, major: 21, request: async () => { throw new Error('Must not redownload') } }), executable)
   } finally { rmSync(root, { recursive: true, force: true }) }
 })
@@ -53,8 +54,8 @@ test('Java checksum failures remove partial archives and never create the final 
   try {
     const network = resolve(root, 'network')
     await assert.rejects(installJava({ root: network, major: 21, request: requestFor(await fixture(root), true) }), /verification failed/u)
-    assert.equal(existsSync(resolve(network, 'java-21')), false)
-    assert.deepEqual(readdirSync(network), [])
+    assert.equal(existsSync(resolve(network, 'java/java-21')), false)
+    assert.deepEqual(readdirSync(resolve(network, 'java')), [])
   } finally { rmSync(root, { recursive: true, force: true }) }
 })
 
@@ -63,7 +64,7 @@ test('Java extraction refuses links outside the installation directory', async (
   try {
     const network = resolve(root, 'network')
     await assert.rejects(installJava({ root: network, major: 21, request: requestFor(await fixture(root, 21, true)) }), /unsafe paths or links/u)
-    assert.deepEqual(readdirSync(network), [])
+    assert.deepEqual(readdirSync(resolve(network, 'java')), [])
   } finally { rmSync(root, { recursive: true, force: true }) }
 })
 
@@ -72,7 +73,7 @@ test('Java executable verification rejects the wrong major version', async () =>
   try {
     const network = resolve(root, 'network')
     await assert.rejects(installJava({ root: network, major: 21, request: requestFor(await fixture(root, 17)) }), /wrong version/u)
-    assert.deepEqual(readdirSync(network), [])
+    assert.deepEqual(readdirSync(resolve(network, 'java')), [])
   } finally { rmSync(root, { recursive: true, force: true }) }
 })
 

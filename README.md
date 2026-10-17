@@ -11,11 +11,22 @@ pnpm install
 pnpm dev
 ```
 
-The first request creates `network/` with persistent `panel.json`, a forwarding secret, and directories for Proxy, Survival, and Creative. No JARs are downloaded or launched during setup.
+The first request creates `data/` with persistent `panel.json`, a forwarding secret, and server directories for Proxy, Survival, and Creative. No JARs are downloaded or launched during setup.
+
+```text
+data/
+  panel.json
+  servers/<server-id>/
+  java/java-<version>/
+  backups/<server-id>/
+  installations/<server-id>.json
+```
+
+On restart, the old `network/` directory is migrated to `data/` if the destination does not exist. Legacy top-level `java-<version>` directories move under `data/java/`. Migration refuses live process locks or conflicting destinations; no existing files are overwritten. Stop the old panel and its managed servers before restarting with the new layout.
 
 1. Download compatible releases from [Velocity](https://papermc.io/downloads/velocity) and [Paper](https://papermc.io/downloads/paper).
 2. Drop the proxy JAR into its Files page as `velocity.jar`, and the Paper JAR into each backend as `server.jar` (128 MiB per file; 160 MiB total request limit). Alternatively, use **Reinstall** in Settings.
-3. Select the required Java version in Settings. The panel automatically downloads Eclipse Temurin into `network/java-17`, `network/java-21`, or `network/java-25` when reinstalling or starting a server, then launches that exact binary. Existing verified panel-managed installations are reused; system Java and `JAVA_*_BIN` variables are not used. Reinstall uses saved settings, so save a changed Java version first.
+3. Select the required Java version in Settings. The panel automatically downloads Eclipse Temurin into `data/java/java-17`, `data/java/java-21`, or `data/java/java-25` when reinstalling or starting a server, then launches that exact binary. Existing verified panel-managed installations are reused; system Java and `JAVA_*_BIN` variables are not used. Reinstall uses saved settings, so save a changed Java version first.
 4. Read and accept the Minecraft EULA in each Paper server's Settings, then Start the servers.
 
 The generated proxy and backends initially bind to loopback ports 25565–25567. Velocity uses modern forwarding, online-mode authentication, and a shared secret; Paper backends stay loopback-only with Velocity authentication enabled. To expose Minecraft itself, deliberately configure the proxy's `bind` in `velocity.toml` and your firewall. Do not expose backend ports.
@@ -26,9 +37,9 @@ The generated proxy and backends initially bind to loopback ports 25565–25567.
 - Missing Java versions are downloaded by the panel from Adoptium on Linux x64/arm64. Archive size, SHA-256, extraction paths/links, and the actual Java executable version are verified before the final `java-<version>` directory is installed. Downloads show live progress; servers sharing a version share one installation/download. Existing Java directories are never overwritten silently. Other platforms are not supported yet.
 - Eligible servers autostart when the panel starts: a JAR must exist and Paper's EULA must already be accepted. No automatic JAR installation or updates.
 - **Reinstall** requires a stopped server and replaces only the configured JAR. The first panel-managed download selects the latest stable PaperMC build (confirm version/Java compatibility and back up worlds first); later reinstalls redownload that exact recorded build. Downloads are restricted to PaperMC, bounded, SHA-256 verified, and atomically swapped only after successful verification. Worlds, plugins, configs, EULA, and backups are untouched; the server is not started automatically.
-- Settings and list ordering persist in `network/panel.json`. Managed ports/directories are read-only in the UI; change them and their corresponding server files only with the panel stopped.
+- Settings and list ordering persist in `data/panel.json`. Managed ports/directories are read-only in the UI; change them and their corresponding server files only with the panel stopped.
 - Files are read/written on disk, with traversal/symlink checks. Stop a server before changing its files. File editing is limited to 512 KiB text files.
-- Backups are actual `.tar.gz` archives under `network/backups/<id>/`. The server must be stopped. Create/delete are supported; restore/download are not implemented yet.
+- Backups are actual `.tar.gz` archives under `data/backups/<id>/`. The server must be stopped. Create/delete are supported; restore/download are not implemented yet.
 - CPU/RAM come from Linux `/proc`, player counts from Minecraft status pings, and Paper TPS from the `tps` command every 15 seconds. Per-proxy network throughput is not implemented and is shown as unavailable, never synthetic.
 - The browser refreshes server-rendered snapshots over the RSC transport every second, independently of long-running actions. Reinstalls show server-reported bytes, percentage, average speed, verification, and completion/error state, including after reload. Terminal rendering, dragging, and input are client interactions; authoritative state and mutations remain server-side.
 - Logs/metric history are bounded and in memory; configurations, files, worlds, and backups persist. Graceful panel shutdown stops managed Java processes. A lock prevents two panels from managing the same network, and a PID registry blocks duplicate starts if Java survived an abrupt panel exit. After changing runtime code during development, restart the panel rather than relying on HMR.
@@ -41,7 +52,7 @@ The panel binds to `127.0.0.1` by default. Set an HTTP Basic password before rem
 PANEL_PASSWORD='choose-a-long-unique-password' pnpm dev
 ```
 
-`PANEL_DATA_DIR` changes the network data directory, including managed Java installations. If HTTPS is terminated at a reverse proxy, set `PANEL_ORIGIN` to the exact external origin (for example `https://panel.example.com`) for action origin validation. These are server process environment variables, not `VITE_*` browser variables.
+`PANEL_DATA_DIR` overrides the default `./data` directory; its `servers/` and `java/` layout stays the same. If HTTPS is terminated at a reverse proxy, set `PANEL_ORIGIN` to the exact external origin (for example `https://panel.example.com`) for action origin validation. These are server process environment variables, not `VITE_*` browser variables.
 
 PaperMC downloads identify the panel as `smol-mc-panel/0.0.0 (https://arsn.cc; admin@arsn.cc)`. Override this if needed:
 
@@ -51,7 +62,7 @@ PAPERMC_USER_AGENT='smol-mc-panel/0.0.0 (https://arsn.cc; admin@arsn.cc)' pnpm d
 
 Without a password, only loopback hostnames without proxy-forwarding headers are accepted. **Keep the listener loopback-only in this mode; host checks are not a replacement for authentication.** For remote use, require `PANEL_PASSWORD` and HTTPS at a trusted reverse proxy. Origin checks protect action dispatch against cross-origin requests. Use a dedicated unprivileged OS user: Java plugins and startup JVM arguments are trusted administrator code, not sandboxed by the file path checks.
 
-Do not run multiple panel instances against one data directory. After an ungraceful crash, inspect any surviving PIDs before clearing `network/processes.json` or `.panel.lock`.
+Do not run multiple panel instances against one data directory. After an ungraceful crash, inspect any surviving PIDs before clearing `data/processes.json` or `.panel.lock`.
 
 ## Checks
 
