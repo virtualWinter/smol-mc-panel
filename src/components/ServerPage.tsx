@@ -7,6 +7,7 @@ import ServerConsole from './ServerConsole'
 import ServerFiles from './ServerFiles'
 import ServerBackups from './ServerBackups'
 import ServerSettings from './ServerSettings'
+import ServerGraphs from './ServerGraphs'
 
 export default function ServerPage() {
   const { serverId, '*': page = '' } = useParams()
@@ -37,6 +38,7 @@ export default function ServerPage() {
             ))}
           </Tabs>
           {page === 'files' ? <ServerFiles server={server} /> : page === 'backups' ? <ServerBackups server={server} /> : page === 'settings' ? <ServerSettings server={server} /> : page !== '' ? <Typography color="text.secondary">Page not found</Typography> : (
+          <Stack spacing={2}>
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', md: 'minmax(0, 1fr) 260px' }, gap: 2 }}>
             <Box sx={{ minWidth: 0 }}><ServerConsole server={server} /></Box>
             <Stack spacing={2}>
@@ -48,6 +50,8 @@ export default function ServerPage() {
               <ServerStats server={server} />
             </Stack>
           </Box>
+          <ServerGraphs server={server} />
+          </Stack>
           )}
         </>
       )}
