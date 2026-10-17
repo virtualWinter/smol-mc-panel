@@ -6,7 +6,7 @@ import App from './App'
 
 const theme = createTheme({
   palette: { mode: 'dark' },
-  shape: { borderRadius: 4 },
+  shape: { borderRadius: 10 },
   typography: { fontFamily: 'Inter, system-ui, sans-serif', button: { textTransform: 'none' } },
   components: {
     MuiPaper: { styleOverrides: { root: { backgroundImage: 'none' } } },
