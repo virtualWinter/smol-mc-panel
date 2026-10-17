@@ -1,5 +1,8 @@
 import { useState } from 'react'
-import { Box, Breadcrumbs, Button, InputAdornment, Link, List, ListItemButton, ListItemIcon, ListItemText, Paper, Stack, TextField, Typography } from '@mui/material'
+import { Box, Breadcrumbs, Button, InputAdornment, Link, List, ListItemButton, ListItemIcon, ListItemText, Paper, Stack, TextField, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material'
+import ViewListOutlinedIcon from '@mui/icons-material/ViewListOutlined'
+import GridViewOutlinedIcon from '@mui/icons-material/GridViewOutlined'
+import FolderIcon from '@mui/icons-material/Folder'
 import FolderOutlinedIcon from '@mui/icons-material/FolderOutlined'
 import DescriptionOutlinedIcon from '@mui/icons-material/DescriptionOutlined'
 import ChevronRightIcon from '@mui/icons-material/ChevronRight'
@@ -14,6 +17,7 @@ function FileManager({ server }: ServerProps) {
   const [path, setPath] = useState<string[]>([])
   const [search, setSearch] = useState('')
   const [notice, setNotice] = useState('')
+  const [view, setView] = useState<'list' | 'grid'>('list')
   const files = (path.length ? [] : serverFiles[server.id] ?? [])
     .filter((file) => file.name.toLowerCase().includes(search.toLowerCase()))
     .sort((a, b) => Number(Boolean(b.directory)) - Number(Boolean(a.directory)) || a.name.localeCompare(b.name))
@@ -27,23 +31,29 @@ function FileManager({ server }: ServerProps) {
           <Link component="button" underline="hover" color={path.length ? 'text.secondary' : 'text.primary'} onClick={() => navigate([])} sx={{ fontSize: 14 }} aria-label="Root directory">/</Link>
           {path.map((part, index) => <Link key={index} component="button" underline="hover" color="text.primary" onClick={() => navigate(path.slice(0, index + 1))} sx={{ fontSize: 14 }}>{part}</Link>)}
         </Breadcrumbs>
-        <TextField placeholder="Search files…" value={search} onChange={(event) => setSearch(event.target.value)} sx={{ width: { xs: '100%', sm: 240 } }} slotProps={{ htmlInput: { 'aria-label': 'Search files' }, input: { startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> } }} />
+        <Stack direction="row" spacing={1}>
+          <TextField placeholder="Search files…" value={search} onChange={(event) => setSearch(event.target.value)} sx={{ width: { xs: '100%', sm: 240 }, minWidth: 0 }} slotProps={{ htmlInput: { 'aria-label': 'Search files' }, input: { startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> } }} />
+          <ToggleButtonGroup exclusive size="small" value={view} onChange={(_, value: 'list' | 'grid' | null) => { if (value) setView(value) }} aria-label="File view">
+            <ToggleButton value="list" aria-label="List view"><ViewListOutlinedIcon fontSize="small" /></ToggleButton>
+            <ToggleButton value="grid" aria-label="Grid view"><GridViewOutlinedIcon fontSize="small" /></ToggleButton>
+          </ToggleButtonGroup>
+        </Stack>
       </Stack>
       <Paper variant="outlined" sx={{ overflow: 'hidden' }}>
-        <Stack direction="row" sx={{ px: 2, py: 1, bgcolor: 'action.hover', justifyContent: 'space-between' }}>
+        {view === 'list' && <Stack direction="row" sx={{ px: 2, py: 1, bgcolor: 'action.hover', justifyContent: 'space-between' }}>
           <Typography variant="caption" color="text.secondary">Name</Typography>
           <Typography variant="caption" color="text.secondary">Size</Typography>
-        </Stack>
-        <List disablePadding>
-          {path.length > 0 && <ListItemButton onClick={() => navigate(path.slice(0, -1))} divider><ListItemText primary=".." /></ListItemButton>}
+        </Stack>}
+        {path.length > 0 && <ListItemButton onClick={() => navigate(path.slice(0, -1))} divider><ListItemText primary=".." /></ListItemButton>}
+        <List disablePadding sx={view === 'grid' ? { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 1, p: 1.5 } : {}}>
           {files.map((file, index) => (
-            <ListItemButton key={file.name} divider={index < files.length - 1} sx={{ px: 2, py: 0.75, minHeight: 44, gap: 1 }} onClick={() => {
+            <ListItemButton key={file.name} divider={view === 'list' && index < files.length - 1} sx={view === 'grid' ? { flexDirection: 'column', justifyContent: 'flex-start', textAlign: 'center', borderRadius: 1, p: 1.5, gap: 0.5, minHeight: 120 } : { px: 2, py: 0.75, minHeight: 44, gap: 1 }} onClick={() => {
               setNotice('')
               if (file.directory) navigate([...path, file.name])
               else if (file.name.endsWith('.jar')) setNotice('Binary files cannot be edited.')
               else setSelected(file)
             }}>
-              <ListItemIcon sx={{ minWidth: 28, color: file.directory ? 'primary.main' : 'text.secondary' }}>{file.directory ? <FolderOutlinedIcon fontSize="small" /> : <DescriptionOutlinedIcon fontSize="small" />}</ListItemIcon>
+              <ListItemIcon sx={{ minWidth: view === 'grid' ? 0 : 28, color: file.directory ? 'primary.main' : 'text.secondary', '& svg': { fontSize: view === 'grid' ? 48 : 20 } }}>{file.directory ? (view === 'grid' ? <FolderIcon /> : <FolderOutlinedIcon />) : <DescriptionOutlinedIcon />}</ListItemIcon>
               <ListItemText primary={file.name} slotProps={{ primary: { variant: 'body2', sx: { overflowWrap: 'anywhere' } } }} />
               <Typography variant="caption" color="text.secondary" sx={{ flexShrink: 0 }}>{file.size}</Typography>
             </ListItemButton>
