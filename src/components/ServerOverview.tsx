@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Divider, InputAdornment, Paper, Stack, TextField, Typography } from '@mui/material'
+import { InputAdornment, Stack, TextField, Typography } from '@mui/material'
 import SearchIcon from '@mui/icons-material/Search'
 import SortableServerRow from './SortableServerRow'
 import { closestCenter, DndContext, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
@@ -29,16 +29,14 @@ export default function ServerOverview() {
           }}
         />
       </Stack>
-      <Paper variant="outlined" sx={{ overflow: 'hidden' }}>
         <DndContext sensors={sensors} collisionDetection={closestCenter} modifiers={[restrictToVerticalAxis]} onDragEnd={({ active, over }) => { if (over) reorderServers(String(active.id), String(over.id)) }}>
         <SortableContext items={filtered.map((server) => server.id)} strategy={verticalListSortingStrategy}>
-        <Stack divider={<Divider />}>
+        <Stack spacing={1.5}>
           {filtered.map((server) => <SortableServerRow key={server.id} server={server} />)}
           {filtered.length === 0 && <Typography color="text.secondary" sx={{ py: 4, textAlign: 'center' }}>No matches</Typography>}
         </Stack>
         </SortableContext>
         </DndContext>
-      </Paper>
     </Stack>
   )
 }
