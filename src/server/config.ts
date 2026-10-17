@@ -3,7 +3,7 @@ import { resolve } from 'node:path'
 import type { Server } from '../types'
 import { PanelError } from './errors'
 
-export type ServerConfig = Omit<Server, 'installed' | 'eulaAccepted' | 'status' | 'memory' | 'players' | 'cpu' | 'logs' | 'logOffset'>
+export type ServerConfig = Omit<Server, 'installed' | 'jarVersion' | 'eulaAccepted' | 'status' | 'memory' | 'players' | 'cpu' | 'logs' | 'logOffset'>
 export const javaVersions = ['Java 25', 'Java 21', 'Java 17']
 
 export function defaults(): ServerConfig[] {

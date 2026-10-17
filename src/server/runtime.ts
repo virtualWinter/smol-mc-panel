@@ -13,6 +13,7 @@ import { provisionNetwork } from './provision'
 import { startupArgs } from './startup'
 import type { Backup, MetricHistory, PanelState, Server } from '../types'
 import { acquireLock } from './lock'
+import { installedSource, reinstallJar } from './downloads'
 
 const execute = promisify(execFile)
 
@@ -158,6 +159,15 @@ export class NetworkRuntime {
     writeFileSync(safePath(this.directory(id), 'eula.txt'), '# Accepted through the panel. https://aka.ms/MinecraftEULA\neula=true\n', { mode: 0o600 })
   }
 
+  async reinstall(id: string) {
+    const config = this.config(id)
+    await this.withWrite(id, async () => {
+      this.manager.log(id, `[Panel] Downloading ${config.kind === 'velocity' ? 'Velocity' : 'Paper'} JAR.`)
+      const source = await reinstallJar({ directory: this.directory(id), jarFile: config.jarFile, project: config.kind === 'velocity' ? 'velocity' : 'paper', manifest: resolve(this.root, 'installations', `${id}.json`) })
+      this.manager.log(id, `[Panel] Installed ${source.project} ${source.version} build ${source.build}. Server remains stopped.`)
+    })
+  }
+
   private async sample() {
     if (this.sampling) return
     this.sampling = true
@@ -223,7 +233,8 @@ export class NetworkRuntime {
     const filePath = request.searchParams.get('path') ?? ''
     const servers: Server[] = this.configs.map((config) => {
       const item = this.manager.get(config.id), history = this.metrics[config.id], players = this.playerCounts.get(config.id)
-      return { ...config, installed: this.installed(config.id), eulaAccepted: this.eulaAccepted(config.id), status: item.status, logs: [...item.logs], logOffset: item.logCount - item.logs.length, cpu: history.cpu.length ? `${history.cpu.at(-1)!.toFixed(1)}%` : '—', memory: history.ram.length ? `${history.ram.at(-1)!.toFixed(0)} / ${config.maxMemory} MiB` : `— / ${config.maxMemory} MiB`, players: players ? `${players.online} / ${players.max}` : '—' }
+      const source = installedSource(resolve(this.root, 'installations', `${config.id}.json`), config.kind === 'velocity' ? 'velocity' : 'paper', config.jarFile)
+      return { ...config, jarVersion: source ? `${source.version} (build ${source.build})` : undefined, installed: this.installed(config.id), eulaAccepted: this.eulaAccepted(config.id), status: item.status, logs: [...item.logs], logOffset: item.logCount - item.logs.length, cpu: history.cpu.length ? `${history.cpu.at(-1)!.toFixed(1)}%` : '—', memory: history.ram.length ? `${history.ram.at(-1)!.toFixed(0)} / ${config.maxMemory} MiB` : `— / ${config.maxMemory} MiB`, players: players ? `${players.online} / ${players.max}` : '—' }
     })
     let files: PanelState['files'] = {}
     if (serverId && this.configs.some((server) => server.id === serverId) && request.pathname.endsWith('/files')) {

@@ -14,7 +14,7 @@ pnpm dev
 The first request creates `network/` with persistent `panel.json`, a forwarding secret, and directories for Proxy, Survival, and Creative. No JARs are downloaded or launched during setup.
 
 1. Download compatible releases from [Velocity](https://papermc.io/downloads/velocity) and [Paper](https://papermc.io/downloads/paper).
-2. Drop the proxy JAR into its Files page as `velocity.jar`, and the Paper JAR into each backend as `server.jar` (128 MiB per file; 160 MiB total request limit).
+2. Drop the proxy JAR into its Files page as `velocity.jar`, and the Paper JAR into each backend as `server.jar` (128 MiB per file; 160 MiB total request limit). Alternatively, use **Reinstall** in Settings with `PAPERMC_USER_AGENT` configured below.
 3. Select the required Java version in Settings. Set `JAVA_21_BIN`, `JAVA_25_BIN`, or `JAVA_17_BIN` if that version is not your default `java` executable. The panel checks the actual version before launching.
 4. Read and accept the Minecraft EULA in each Paper server's Settings, then Start the servers.
 
@@ -24,6 +24,7 @@ The generated proxy and backends initially bind to loopback ports 25565–25567.
 
 - Start, graceful Stop/Restart, real stdin commands, ANSI stdout/stderr, and capped crash recovery.
 - Eligible servers autostart when the panel starts: a JAR must exist and Paper's EULA must already be accepted. No automatic JAR installation or updates.
+- **Reinstall** requires a stopped server and replaces only the configured JAR. The first panel-managed download selects the latest stable PaperMC build (confirm version/Java compatibility and back up worlds first); later reinstalls redownload that exact recorded build. Downloads are restricted to PaperMC, bounded, SHA-256 verified, and atomically swapped only after successful verification. Worlds, plugins, configs, EULA, and backups are untouched; the server is not started automatically.
 - Settings and list ordering persist in `network/panel.json`. Managed ports/directories are read-only in the UI; change them and their corresponding server files only with the panel stopped.
 - Files are read/written on disk, with traversal/symlink checks. Stop a server before changing its files. File editing is limited to 512 KiB text files.
 - Backups are actual `.tar.gz` archives under `network/backups/<id>/`. The server must be stopped. Create/delete are supported; restore/download are not implemented yet.
@@ -40,6 +41,12 @@ PANEL_PASSWORD='choose-a-long-unique-password' pnpm dev
 ```
 
 `PANEL_DATA_DIR` changes the network data directory. `JAVA_<version>_BIN` selects Java executables. If HTTPS is terminated at a reverse proxy, set `PANEL_ORIGIN` to the exact external origin (for example `https://panel.example.com`) for action origin validation. These are server process environment variables, not `VITE_*` browser variables.
+
+PaperMC requires an identifying User-Agent with your real contact URL/email for downloads. Set it before starting the panel (replace the sample contact):
+
+```sh
+PAPERMC_USER_AGENT='smol-mc-panel/0.0.0 (mailto:you@example.com)' pnpm dev
+```
 
 Without a password, only loopback hostnames without proxy-forwarding headers are accepted. **Keep the listener loopback-only in this mode; host checks are not a replacement for authentication.** For remote use, require `PANEL_PASSWORD` and HTTPS at a trusted reverse proxy. Origin checks protect action dispatch against cross-origin requests. Use a dedicated unprivileged OS user: Java plugins and startup JVM arguments are trusted administrator code, not sandboxed by the file path checks.
 

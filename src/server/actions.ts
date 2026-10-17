@@ -18,6 +18,7 @@ export async function sendCommand(id: string, command: string) {
 export async function saveSettings(id: string, input: Partial<Server>) { runtime().saveSettings(id, input) }
 export async function reorderServers(activeId: string, overId: string) { runtime().reorder(activeId, overId) }
 export async function acceptEula(id: string) { runtime().acceptEula(id) }
+export async function reinstallServer(id: string) { await runtime().reinstall(id) }
 
 export async function moveFile(id: string, source: string, destination: string) {
   await runtime().withWrite(id, () => moveEntry(runtime().directory(id), source, destination))

@@ -1,6 +1,7 @@
 export interface Server {
   kind: 'velocity' | 'paper'
   installed: boolean
+  jarVersion?: string
   eulaAccepted: boolean
   id: string
   name: string

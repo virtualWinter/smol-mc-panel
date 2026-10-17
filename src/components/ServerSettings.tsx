@@ -5,10 +5,12 @@ import type { ServerProps, Server } from '../types'
 import type { TextFieldProps } from '@mui/material'
 
 function SettingsForm({ server }: ServerProps) {
-  const { saveSettings, acceptEula, javaVersions } = usePanel()
+  const { saveSettings, acceptEula, reinstallServer, javaVersions } = usePanel()
   const [values, setValues] = useState(server)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
+  const [reinstalling, setReinstalling] = useState(false)
+  const [reinstalled, setReinstalled] = useState(false)
   const change = (field: keyof Server, value: string | boolean) => {
     setValues((current) => ({ ...current, [field]: value }))
     setSaved(false)
@@ -41,6 +43,21 @@ function SettingsForm({ server }: ServerProps) {
             {field('address', 'Address', { slotProps: { input: { readOnly: true } } })}
           </Box>
           {field('workingDirectory', 'Working directory', { slotProps: { input: { readOnly: true } } })}
+        </Stack>
+      </Paper>
+      <Paper variant="outlined" sx={{ p: 2 }}>
+        <Stack spacing={1.5} sx={{ alignItems: 'flex-start' }}>
+          <Typography component="h2" variant="subtitle1" sx={{ fontWeight: 600 }}>Server JAR</Typography>
+          <Typography variant="body2" color="text.secondary">{server.jarVersion ?? 'Latest stable release on first install'}. Worlds, plugins, and settings are kept.</Typography>
+          <Button type="button" variant="outlined" disabled={reinstalling || server.status !== 'Offline'} onClick={async () => {
+            const version = server.jarVersion ?? 'the latest stable release (this may change the Minecraft version and Java requirements; back up your worlds first)'
+            if (!window.confirm(`Download ${version} and replace ${server.jarFile}? Other server files will not be deleted.`)) return
+            setReinstalling(true); setReinstalled(false); setError('')
+            try { await reinstallServer(server.id); setReinstalled(true) }
+            catch (error) { setError(String(error)) }
+            finally { setReinstalling(false) }
+          }}>{reinstalling ? 'Downloading…' : 'Reinstall'}</Button>
+          {reinstalled && <Typography variant="caption" role="status">JAR reinstalled. Server remains stopped.</Typography>}
         </Stack>
       </Paper>
       {server.kind === 'paper' && !server.eulaAccepted && <Paper variant="outlined" sx={{ p: 2 }}>
