@@ -19,5 +19,5 @@ export interface Server {
 }
 
 export interface ServerProps { server: Server }
-export interface ServerFile { name: string; size: string; directory?: boolean }
+export interface ServerFile { name: string; size: string; directory?: boolean; modified?: string }
 export interface Backup { id: string; name: string; created: string; size: string }

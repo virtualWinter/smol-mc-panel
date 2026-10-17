@@ -34,7 +34,7 @@ export const networkServers: Server[] = [proxy, ...servers].map((server) => ({
   restartOnCrash: true,
 }))
 
-export const serverFiles: Record<string, ServerFile[]> = {
+const fileEntries: Record<string, ServerFile[]> = {
   proxy: [
     { name: 'plugins', size: '—', directory: true },
     { name: 'velocity.toml', size: '4 KB' },
@@ -53,6 +53,10 @@ export const serverFiles: Record<string, ServerFile[]> = {
     { name: 'server.jar', size: '48 MB' },
   ],
 }
+
+export const serverFiles: Record<string, ServerFile[]> = Object.fromEntries(
+  Object.entries(fileEntries).map(([id, files]) => [id, files.map((file) => ({ ...file, modified: 'Oct 17, 2026, 04:00' }))]),
+)
 
 export const serverBackups: Record<string, Backup[]> = {
   proxy: [],
