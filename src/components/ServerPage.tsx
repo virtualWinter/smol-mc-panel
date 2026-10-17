@@ -31,7 +31,7 @@ export default function ServerPage() {
               <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>{server.address}</Typography>
             </Box>
           </Stack>
-          <Tabs value={['', 'files', 'backups', 'settings'].includes(page) ? page : false} variant="scrollable" scrollButtons="auto" aria-label="Server navigation" sx={{ borderBottom: 1, borderColor: 'divider' }}>
+          <Tabs value={['', 'files', 'backups', 'settings'].includes(page) ? page : false} variant="scrollable" scrollButtons="auto" aria-label="Server navigation" sx={{ alignSelf: 'flex-start', maxWidth: '100%', borderBottom: 1, borderColor: 'divider' }}>
             {[['', 'Console'], ['files', 'Files'], ['backups', 'Backups'], ['settings', 'Settings']].map(([path, label]) => (
               <Tab key={path} value={path} label={label} component={Link} to={`/${server.id}${path ? `/${path}` : ''}`} />
             ))}
