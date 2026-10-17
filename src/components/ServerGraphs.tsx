@@ -15,7 +15,7 @@ export default function ServerGraphs({ server }: ServerProps) {
   ]
 
   return (
-    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(4, 1fr)' }, gap: 2 }}>
+    <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 2 }}>
       {graphs.map(({ label, values, max, value }) => {
         const points = values.map((sample, index) => `${index / Math.max(1, values.length - 1) * 280},${76 - Math.min(1, Math.max(0, sample / max)) * 68}`).join(' ')
         return (
