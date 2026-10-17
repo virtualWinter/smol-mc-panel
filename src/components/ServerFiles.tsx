@@ -39,31 +39,30 @@ function FileManager({ server }: ServerProps) {
         </Stack>
       </Stack>
       <Paper variant="outlined" sx={{ overflow: 'hidden' }}>
-        {view === 'list' && <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr) 72px', sm: 'minmax(0, 1fr) 100px 180px' }, bgcolor: 'action.hover', borderBottom: 1, borderColor: 'divider' }}>
+        {view === 'list' && <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr) 72px', sm: 'minmax(0, 1fr) 100px 180px' }, color: 'text.secondary', borderBottom: 1, borderColor: 'divider' }}>
           <Typography variant="caption" sx={{ px: 2, py: 0.75 }}>Name</Typography>
-          <Typography variant="caption" sx={{ px: 1.5, py: 0.75, borderLeft: 1, borderColor: 'divider' }}>Size</Typography>
-          <Typography variant="caption" sx={{ display: { xs: 'none', sm: 'block' }, px: 1.5, py: 0.75, borderLeft: 1, borderColor: 'divider' }}>Modified</Typography>
+          <Typography variant="caption" sx={{ px: 1.5, py: 0.75 }}>Size</Typography>
+          <Typography variant="caption" sx={{ display: { xs: 'none', sm: 'block' }, px: 1.5, py: 0.75 }}>Modified</Typography>
         </Box>}
         {path.length > 0 && <ListItemButton onClick={() => navigate(path.slice(0, -1))} divider><ListItemText primary=".." /></ListItemButton>}
-        <List disablePadding sx={view === 'grid' ? { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 1, p: 1.5 } : {}}>
-          {files.map((file, index) => (
-            <ListItemButton key={file.name} sx={view === 'grid' ? { flexDirection: 'column', justifyContent: 'flex-start', textAlign: 'center', borderRadius: 1, p: 1.5, gap: 0.5, minHeight: 120 } : { display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr) 72px', sm: 'minmax(0, 1fr) 100px 180px' }, px: 0, py: 0.5, minHeight: 52, bgcolor: index % 2 ? 'action.hover' : 'transparent', '&.Mui-focusVisible': { outline: '1px solid', outlineColor: 'primary.main', outlineOffset: -1 } }} onClick={() => {
+        <List disablePadding sx={view === 'grid' ? { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 0.5, p: 1 } : { py: 0.5 }}>
+          {files.map((file) => (
+            <ListItemButton key={file.name} title={file.name} sx={view === 'grid' ? { flexDirection: 'column', justifyContent: 'center', textAlign: 'center', borderRadius: 1, p: 2, minHeight: 104 } : { display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr) 72px', sm: 'minmax(0, 1fr) 100px 180px' }, px: 0, py: 0.25, minHeight: 42, '&.Mui-focusVisible': { outline: '1px solid', outlineColor: 'primary.main', outlineOffset: -1 } }} onClick={() => {
               setNotice('')
               if (file.directory) navigate([...path, file.name])
               else if (file.name.endsWith('.jar')) setNotice('Binary files cannot be edited.')
               else setSelected(file)
             }}>
-              <Stack direction={view === 'grid' ? 'column' : 'row'} spacing={1.5} sx={{ alignItems: 'center', minWidth: 0, px: view === 'list' ? 2 : 0 }}>
-                <ListItemIcon sx={{ minWidth: 0, color: file.directory ? 'primary.main' : 'text.secondary', '& svg': { fontSize: view === 'grid' ? 48 : 36 } }}>{file.directory ? <FolderIcon /> : <DescriptionOutlinedIcon />}</ListItemIcon>
-                <ListItemText primary={file.name} slotProps={{ primary: { variant: 'body2', sx: { overflowWrap: 'anywhere' } } }} />
+              <Stack direction={view === 'grid' ? 'column' : 'row'} spacing={1} sx={{ alignItems: 'center', minWidth: 0, width: '100%', px: view === 'list' ? 2 : 0 }}>
+                <ListItemIcon sx={{ minWidth: 0, color: file.directory ? 'primary.main' : 'text.secondary', '& svg': { fontSize: view === 'grid' ? 36 : 20 } }}>{file.directory ? <FolderIcon /> : <DescriptionOutlinedIcon />}</ListItemIcon>
+                <ListItemText primary={file.name} sx={{ minWidth: 0, maxWidth: '100%' }} slotProps={{ primary: { variant: 'body2', noWrap: true } }} />
               </Stack>
-              <Typography variant="caption" color="text.secondary" sx={{ px: 1.5 }}>{file.size}</Typography>
+              {view === 'list' && <Typography variant="caption" color="text.secondary" sx={{ px: 1.5 }}>{file.size}</Typography>}
               {view === 'list' && <Typography variant="caption" color="text.secondary" sx={{ display: { xs: 'none', sm: 'block' }, px: 1.5 }}>{file.modified ?? '—'}</Typography>}
             </ListItemButton>
           ))}
         </List>
         {files.length === 0 && <Box sx={{ py: 5, textAlign: 'center' }}><Typography variant="body2" color="text.secondary">{search ? 'No matching files' : 'Empty directory'}</Typography>{search && <Button onClick={() => setSearch('')}>Clear search</Button>}</Box>}
-        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', px: 2, py: 0.75, borderTop: 1, borderColor: 'divider' }}>{files.filter((file) => file.directory).length} folders, {files.filter((file) => !file.directory).length} files</Typography>
       </Paper>
       {notice && <Typography variant="body2" color="text.secondary" role="status">{notice}</Typography>}
       {selected && <FileEditor key={fileKey} name={selected.name} content={contents[fileKey] ?? ''} onClose={() => setSelected(null)} onSave={(content) => { setContents((current) => ({ ...current, [fileKey]: content })); setSelected(null) }} />}
