@@ -16,6 +16,7 @@ import { acquireLock } from './lock'
 import { installedSource, reinstallJar } from './downloads'
 import { installJava, managedJava } from './java'
 import { bungeeStartupIssue } from './proxy-config'
+import { requiredJava } from './jar-java'
 
 const execute = promisify(execFile)
 
@@ -34,6 +35,7 @@ export class NetworkRuntime {
   private javaExecutables = new Map<number, string>()
   private javaJobs = new Map<number, { promise: Promise<string>; progress?: DownloadProgressState; listeners: Set<(progress: DownloadProgressState) => void> }>()
   private downloads: Record<string, DownloadProgressState> = {}
+  private jarRequirements = new Map<string, { size: number; mtime: number; inode: number; major: number }>()
   private releaseLock: () => void
 
   constructor(readonly root: string, autostart = true) {
@@ -139,6 +141,22 @@ export class NetworkRuntime {
     } finally { job.listeners.delete(listener) }
   }
 
+  private async compatibleJava(config: ServerConfig): Promise<ServerConfig> {
+    const path = safePath(this.directory(config.id), config.jarFile)
+    const stat = statSync(path), cached = this.jarRequirements.get(path)
+    const major = cached && cached.size === stat.size && cached.mtime === stat.mtimeMs && cached.inode === stat.ino ? cached.major : await requiredJava(path)
+    this.jarRequirements.set(path, { size: stat.size, mtime: stat.mtimeMs, inode: stat.ino, major })
+    if (Number(config.javaVersion.split(' ')[1]) >= major) return config
+    const available = javaVersions.map((value) => Number(value.split(' ')[1])).sort((a, b) => a - b).find((value) => value >= major)
+    if (!available) throw new PanelError(`This JAR requires Java ${major}, which the panel does not support yet.`)
+    const next = { ...config, javaVersion: `Java ${available}` }
+    const configs = this.configs.map((server) => server.id === config.id ? next : server)
+    saveConfig(this.root, configs)
+    this.configs = configs
+    this.manager.log(config.id, `[Panel] JAR requires Java ${major}; switching from ${config.javaVersion} to Java ${available}.`)
+    return next
+  }
+
   private async startEligible() {
     for (const config of [...this.configs].sort((a, b) => Number(a.kind !== 'paper') - Number(b.kind !== 'paper'))) {
       if (config.autoStart && this.installed(config.id) && this.eulaAccepted(config.id)) {
@@ -148,12 +166,16 @@ export class NetworkRuntime {
   }
 
   async power(id: string, action: 'Start' | 'Restart' | 'Stop') {
-    const config = this.config(id)
+    let config = this.config(id)
     if (this.backupJobs.has(id) || this.writeJobs.has(id)) throw new PanelError('Wait for active file operations or backups to finish.')
     if (action === 'Stop' || action === 'Restart') await this.manager.stop(config)
     if (action === 'Start' || action === 'Restart') {
       this.checkAssets(config)
-      await this.withWrite(id, () => this.ensureJava(config))
+      config = await this.withWrite(id, async () => {
+        const compatible = await this.compatibleJava(config)
+        await this.ensureJava(compatible)
+        return compatible
+      })
       await this.manager.start(config)
     }
   }
@@ -200,7 +222,7 @@ export class NetworkRuntime {
       this.manager.log(id, `[Panel] Downloading ${config.kind === 'velocity' ? 'Velocity' : config.kind === 'bungeecord' ? 'BungeeCord' : 'Paper'} JAR.`)
       try {
         const source = await reinstallJar({ directory: this.directory(id), jarFile: config.jarFile, project: config.kind, manifest: resolve(this.root, 'installations', `${id}.json`), onProgress: (progress) => { this.downloads[id] = progress } })
-        await this.ensureJava(config)
+        await this.ensureJava(await this.compatibleJava(config))
         this.downloads[id] = { phase: 'complete', received: source.size, total: source.size, bytesPerSecond: 0 }
         this.manager.log(id, `[Panel] Installed ${source.project} ${source.version} build ${source.build}. Server remains stopped.`)
       } catch (error) {

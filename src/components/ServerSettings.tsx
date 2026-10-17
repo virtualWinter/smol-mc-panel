@@ -8,6 +8,11 @@ import DownloadProgress from './DownloadProgress'
 function SettingsForm({ server }: ServerProps) {
   const { saveSettings, acceptEula, reinstallServer, javaVersions } = usePanel()
   const [values, setValues] = useState(server)
+  const [previousJava, setPreviousJava] = useState(server.javaVersion)
+  if (previousJava !== server.javaVersion) {
+    setPreviousJava(server.javaVersion)
+    setValues((current) => ({ ...current, javaVersion: server.javaVersion }))
+  }
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
   const [reinstalling, setReinstalling] = useState(false)

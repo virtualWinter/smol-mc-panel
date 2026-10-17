@@ -51,3 +51,20 @@ test('crash recovery is capped instead of endlessly respawning a broken server',
     assert.equal(manager.get(config.id).restartTimer, undefined)
   } finally { await manager.shutdown([config]) }
 })
+
+test('Java compatibility failures do not enter crash-recovery loops', async () => {
+  const config = defaults()[0]
+  let launches = 0
+  const manager = new ProcessManager({
+    directory: () => process.cwd(), beforeStart: () => {}, restartDelay: 5,
+    launch: () => { launches++; return spawn(process.execPath, ['-e', 'console.error("java.lang.UnsupportedClassVersionError: class file version 69.0"); process.exit(1)'], { stdio: 'pipe' }) },
+  })
+  try {
+    await manager.start(config)
+    await once(manager.get(config.id).child!, 'close')
+    await delay(30)
+    assert.equal(launches, 1)
+    assert.equal(manager.get(config.id).restartTimer, undefined)
+    assert.ok(manager.get(config.id).logs.some((line) => line.includes('Automatic restarts are disabled')))
+  } finally { await manager.shutdown([config]) }
+})

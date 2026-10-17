@@ -15,6 +15,7 @@ export interface ManagedProcess {
   restarts: number[]
   restartTimer?: ReturnType<typeof setTimeout>
   lastTps?: number
+  incompatibleJava?: boolean
 }
 
 interface Options {
@@ -44,11 +45,12 @@ export class ProcessManager {
     item.logCount++
     if (item.logs.length > 1000) item.logs.splice(0, item.logs.length - 1000)
     const plain = stripVTControlCharacters(line)
+    if (item.status === 'Starting' && plain.includes('UnsupportedClassVersionError')) item.incompatibleJava = true
     if (/TPS from last/u.test(plain)) {
       const value = Number(plain.split(':').at(-1)?.match(/[\d.]+/u)?.[0])
       if (Number.isFinite(value)) item.lastTps = Math.min(20, value)
     }
-    if (/Done \(|Listening on|Done \([\d.,]+s\)!/u.test(plain) && item.child && item.status === 'Starting') item.status = 'Online'
+    if (/Done \(|Listening on|Done \([\d.,]+s\)!/u.test(plain) && item.child && item.status === 'Starting') { item.status = 'Online'; item.incompatibleJava = false }
   }
 
   async start(config: ServerConfig, automatic = false) {
@@ -62,6 +64,7 @@ export class ProcessManager {
     if (!automatic) item.restarts = []
     item.intentionalStop = false
     item.lastTps = undefined
+    item.incompatibleJava = false
     item.status = 'Starting'
     const executable = this.options.executable?.(config)
     if (!executable && !this.options.launch) { item.status = 'Offline'; throw new PanelError('The panel-managed Java runtime is not ready.') }
@@ -91,7 +94,8 @@ export class ProcessManager {
       try { this.options.onProcessChange?.() } catch (error) { this.log(config.id, `[Panel] Could not persist process state: ${String(error)}`) }
       item.status = 'Offline'
       this.log(config.id, `[Panel] Process exited (${signal ?? code ?? 'unknown'}).`)
-      if (!item.intentionalStop && !this.shuttingDown && config.restartOnCrash && (code !== 0 || signal !== null)) {
+      if (item.incompatibleJava) this.log(config.id, '[Panel] Java is incompatible with this JAR. Automatic restarts are disabled; use a compatible Java version before starting again.')
+      if (!item.incompatibleJava && !item.intentionalStop && !this.shuttingDown && config.restartOnCrash && (code !== 0 || signal !== null)) {
         item.restarts = item.restarts.filter((time) => Date.now() - time < 600_000)
         if (item.restarts.length >= 5) { this.log(config.id, '[Panel] Crash recovery paused after 5 failures in 10 minutes.'); return }
         item.restarts.push(Date.now())

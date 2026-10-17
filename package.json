@@ -25,12 +25,14 @@
     "react-dom": "^19.2.8",
     "rsc-html-stream": "^0.0.8",
     "tar": "^7.5.22",
-    "yaml": "^2.9.1"
+    "yaml": "^2.9.1",
+    "yauzl": "^3.4.0"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
+    "@types/yauzl": "^3.4.0",
     "@vitejs/plugin-react": "^6.1.1",
     "@vitejs/plugin-rsc": "^0.5.38",
     "oxlint": "^1.81.0",
