@@ -64,15 +64,33 @@ docker compose up -d --build
 Open `http://127.0.0.1:5173/` (host port mapped by compose) and complete first-start setup. Data persists in the named `panel-data` volume. Stop the panel with `docker compose down` (or `docker compose stop`); the configured stop timeout outlasts Minecraft's graceful shutdown, and managed Java processes are stopped on panel shutdown. The image runs an unprivileged user (`node`, UID 1000); bind-mounted host directories must be chowned to that UID, and named volumes get it automatically.
 
 - Panel web access is published on 5173. Behind a reverse proxy that rewrites the Host header, set `PANEL_ORIGIN` to the exact external origin, or Server Function origin validation fails.
+- With `PANEL_ORIGIN` set to an HTTPS origin, first-start setup is also acceptable through that proxy: requests must arrive with the declared Host and `x-forwarded-proto: https`. Complete setup immediately after the first deployment — before the account exists, whoever loads the panel first can create the admin. Without a declared origin, setup stays loopback-only.
 - Exposing Minecraft: managed listeners bind to loopback (panel requirement encoded in `panel.json`), and Docker cannot forward to a loopback listener. Two supported options: edit the proxy's bind address to `0.0.0.0:25565` in `data/servers/proxy/velocity.toml` (or `config.yml` `listeners[0].host` for BungeeCord) while the proxy is stopped, keep `panel.json` unchanged, and publish `25565:25565`; or run the container with `network_mode: host`. Backend Paper servers must stay loopback-only.
 - The metrics agent compiles on first server start from `agent/` sources shipped in the image, using the JDK the panel installed under `/data/java/`.
 - The container needs enough RAM for the panel plus every configured server's `maxMemory` at once; sized images should match the network currently hosted.
 - Restore-from-volume backups are unaffected by upgrades; update the image with `docker compose pull && docker compose up -d --build`. RSC/dataset formats and `data/` layout migrations run automatically on first start as described below.
 - The agent JAR is compiled by the panel with the managed JDK (`javac`/`jar`) into `/data/agents/`, sunsetting its private ASM copy under `cc.arsn.panel.metrics.internal.asm` (pinned download, SHA-256 verified) so it can never shadow the server's own ASM. If the agent cannot build or instrument a server version, the panel continues to run that server with `/proc`-based metrics only, and no restart loops or fatal errors are introduced. The data directory path must not contain `=` (separator in the `-javaagent` argument).
 
+## Dokploy
+
+Deploy as a Dokploy **Docker Compose** service using this repository's `docker-compose.yml`; Dokploy's Traefik terminates TLS and routes to the panel. Set the service domain in Dokploy and configure the panel env so both layers agree:
+
+```text
+PANEL_ORIGIN=https://panel.example.com
+```
+
+`panel.example.com` must be the exact scheme/host TLS clients use; server-function origin validation and pre-setup access both compare against it. Dokploy's Traefik already forwards the original Host and `x-forwarded-proto: https`, which are required. Open the public domain right after the first deployment and complete first-start setup in the browser (admin account, proxy type, Paper backends) — do this immediately, since setup is first-come-first-served until an account exists.
+
+Operating notes:
+
+- Keep the container as-is: Traefik reaches it over Dokploy's internal network, and the binding inside the container is `0.0.0.0:5173` for the web panel plus loopback-only Minecraft listeners.
+- Panel access goes through Traefik. The `5173:5173` mapping in the compose file is optional on a Dokploy server; keeping it publishes the panel on the host IP over plain HTTP, which breaks the Secure session cookie sent under `PANEL_ORIGIN` — remove the mapping unless you tunnel through SSH (`ssh -L 5173:127.0.0.1:5173 <host>`).
+- To expose Minecraft (TCP), publish the port directly rather than through Traefik: switch the proxy bind to `0.0.0.0:25565` in `data/servers/proxy/velocity.toml` (or `config.yml` for BungeeCord), keep `panel.json` loopback, and add `- "25565:25565"` to compose `ports` in Dokploy's editor, redeploying after the volume already contains the config. Players connect directly to the host IP.
+- `x-forwarded-proto` must be `https` (default Dokploy behaviour) — connections to the declared host over plain HTTP fail validation now and forever (also enforced for server-function POSTs by the origin match).
+
 ## Access and configuration
 
-The panel binds to `127.0.0.1` by default. First-account setup requires direct local access. Admin passwords are salted with scrypt and stored only as hashes in `data/admin.json` (mode 0600). Signed, HttpOnly, SameSite=Strict cookies keep sessions for seven days; HTTPS deployments also use Secure cookies. All management Server Functions enforce authentication, not just the page UI. Sign out from the network overview. `PANEL_PASSWORD`/HTTP Basic authentication is no longer used.
+The panel binds to `127.0.0.1` by default. First-account setup requires direct local access, or a reverse proxy whose external HTTPS origin was configured in `PANEL_ORIGIN` before setup (see Docker/Dokploy above). Admin passwords are salted with scrypt and stored only as hashes in `data/admin.json` (mode 0600). Signed, HttpOnly, SameSite=Strict cookies keep sessions for seven days; HTTPS deployments also use Secure cookies. All management Server Functions enforce authentication, not just the page UI. Sign out from the network overview. `PANEL_PASSWORD`/HTTP Basic authentication is no longer used.
 
 `PANEL_DATA_DIR` overrides the default `./data` directory; its `servers/` and `java/` layout stays the same. If HTTPS is terminated at a reverse proxy, set `PANEL_ORIGIN` to the exact external origin (for example `https://panel.example.com`) for action origin validation. These are server process environment variables, not `VITE_*` browser variables.
 

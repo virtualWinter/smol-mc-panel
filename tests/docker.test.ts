@@ -9,7 +9,8 @@ test('Docker packaging matches the application runtime layout', () => {
   assert.ok(panel, 'compose declares the panel service')
   assert.equal(panel.build, '.')
   assert.deepEqual(panel.environment, { PANEL_DATA_DIR: '/data' })
-  assert.ok((compose.volumes as unknown) && 'panel-data' in compose.volumes)
+  const volumes = compose.volumes ?? {}
+  assert.deepEqual(Object.keys(volumes), ['panel-data'])
   assert.ok(!JSON.stringify(panel.ports).includes('25565:25565'), 'proxy port publishing stays opt-in while listeners bind loopback')
 
   const dockerfile = readFileSync('Dockerfile', 'utf8')
