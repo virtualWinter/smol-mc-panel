@@ -21,7 +21,7 @@ function SettingsForm({ server }: ServerProps) {
   const columns = { display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }
 
   return (
-    <Stack component="form" spacing={3} onSubmit={(event) => {
+    <Stack component="form" spacing={2} onSubmit={(event) => {
       event.preventDefault()
       if (Number(values.minMemory) > Number(values.maxMemory)) {
         setError('Initial memory cannot exceed maximum memory.')
@@ -34,8 +34,8 @@ function SettingsForm({ server }: ServerProps) {
       })
       setSaved(true)
     }}>
-      <Paper variant="outlined" sx={{ p: 3 }}>
-        <Stack spacing={2.5}>
+      <Paper variant="outlined" sx={{ p: 2 }}>
+        <Stack spacing={2}>
           <Typography component="h2" variant="subtitle1" sx={{ fontWeight: 600 }}>General</Typography>
           <Box sx={columns}>
             {field('name', 'Server name')}
@@ -44,8 +44,8 @@ function SettingsForm({ server }: ServerProps) {
           {field('workingDirectory', 'Working directory')}
         </Stack>
       </Paper>
-      <Paper variant="outlined" sx={{ p: 3 }}>
-        <Stack spacing={2.5}>
+      <Paper variant="outlined" sx={{ p: 2 }}>
+        <Stack spacing={2}>
           <Typography component="h2" variant="subtitle1" sx={{ fontWeight: 600 }}>Startup</Typography>
           <Box sx={columns}>
             {field('javaVersion', 'Java version', { select: true, children: javaVersions.map((version) => <MenuItem key={version} value={version}>{version}</MenuItem>) })}
@@ -57,7 +57,7 @@ function SettingsForm({ server }: ServerProps) {
           {field('stopCommand', 'Stop command')}
         </Stack>
       </Paper>
-      <Paper variant="outlined" sx={{ p: 3 }}>
+      <Paper variant="outlined" sx={{ p: 2 }}>
         <Stack spacing={1}>
           <Typography component="h2" variant="subtitle1" sx={{ fontWeight: 600 }}>Automation</Typography>
           <FormControlLabel control={<Switch checked={values.restartOnCrash} onChange={(event) => change('restartOnCrash', event.target.checked)} />} label="Restart after a crash" />

@@ -7,7 +7,7 @@ import { MockProvider } from './data/MockProvider'
 export default function App() {
   return (
     <MockProvider><BrowserRouter>
-      <Container maxWidth="lg" sx={{ py: { xs: 3, sm: 5 } }}>
+      <Container maxWidth="lg" sx={{ py: { xs: 2, sm: 3 } }}>
         <Routes>
           <Route path="/" element={<ServerOverview />} />
           <Route path="/:serverId/*" element={<ServerPage />} />

@@ -8,10 +8,10 @@ export default function ServerCard({ server }: ServerProps) {
   const online = server.status === 'Online'
 
   return (
-    <Paper component={Link} to={`/${server.id}`} variant="outlined" sx={{ p: 2.5, borderRadius: 2, display: 'block', color: 'inherit', textDecoration: 'none', '&:hover': { borderColor: 'text.secondary' }, '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main' } }}>
-      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={3} sx={{ alignItems: { sm: 'center' } }}>
-        <Stack direction="row" spacing={2} sx={{ flex: 1, alignItems: 'center' }}>
-          <Box sx={{ p: 1.25, display: 'flex', bgcolor: 'action.hover', borderRadius: 2 }}>
+    <Paper component={Link} to={`/${server.id}`} variant="outlined" sx={{ p: 1.5, borderRadius: 1, display: 'block', color: 'inherit', textDecoration: 'none', '&:hover': { borderColor: 'text.secondary' }, '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main' } }}>
+      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ alignItems: { sm: 'center' } }}>
+        <Stack direction="row" spacing={1.5} sx={{ flex: 1, alignItems: 'center' }}>
+          <Box sx={{ p: 1, display: 'flex', bgcolor: 'action.hover', borderRadius: 1 }}>
             <DnsOutlinedIcon color={online ? 'primary' : 'disabled'} />
           </Box>
           <Box>

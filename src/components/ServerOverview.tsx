@@ -12,17 +12,17 @@ export default function ServerOverview() {
   const filtered = servers.filter((server) => `${server.name} ${server.address}`.toLowerCase().includes(search.toLowerCase()))
 
   return (
-    <Stack spacing={3}>
+    <Stack spacing={2}>
       <Box>
-        <Typography component="h1" variant="h4" sx={{ fontWeight: 600 }} gutterBottom>Network overview</Typography>
+        <Typography component="h1" variant="h5" sx={{ fontWeight: 600 }}>Network</Typography>
       </Box>
-      <Stack component="section" spacing={1.5} aria-labelledby="proxy-heading">
+      <Stack component="section" spacing={1} aria-labelledby="proxy-heading">
         <Box>
           <Typography id="proxy-heading" component="h2" variant="subtitle1" sx={{ fontWeight: 600 }}>Proxy</Typography>
         </Box>
         <ServerCard server={proxy} />
       </Stack>
-      <Stack component="section" spacing={1.5} aria-labelledby="servers-heading">
+      <Stack component="section" spacing={1} aria-labelledby="servers-heading">
       <Box>
         <Typography id="servers-heading" component="h2" variant="subtitle1" sx={{ fontWeight: 600 }}>Servers</Typography>
       </Box>
@@ -36,7 +36,7 @@ export default function ServerOverview() {
           input: { startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> },
         }}
       />
-      <Stack spacing={1.5}>
+      <Stack spacing={1}>
         {filtered.map((server) => <ServerCard key={server.id} server={server} />)}
         {filtered.length === 0 && <Typography color="text.secondary" sx={{ py: 4, textAlign: 'center' }}>No servers match your search.</Typography>}
       </Stack>
