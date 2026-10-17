@@ -4,7 +4,6 @@ import ViewListOutlinedIcon from '@mui/icons-material/ViewListOutlined'
 import GridViewOutlinedIcon from '@mui/icons-material/GridViewOutlined'
 import FolderIcon from '@mui/icons-material/Folder'
 import DescriptionOutlinedIcon from '@mui/icons-material/DescriptionOutlined'
-import ChevronRightIcon from '@mui/icons-material/ChevronRight'
 import SearchIcon from '@mui/icons-material/Search'
 import useFileManager from './useFileManager'
 import FileEditor from './FileEditor'
@@ -27,8 +26,8 @@ function FileManager({ server }: ServerProps) {
   return (
     <Stack spacing={1.5}>
       <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ justifyContent: 'space-between', alignItems: { sm: 'center' } }}>
-        <Breadcrumbs separator={<ChevronRightIcon fontSize="small" />} aria-label="File path">
-          <Link {...dropProps('')} component="button" underline="hover" color={path.length ? 'text.secondary' : 'text.primary'} onClick={() => navigate([])} sx={{ fontSize: 14 }} aria-label="Root directory">server/</Link>
+        <Breadcrumbs separator="/" aria-label="File path" sx={{ '& .MuiBreadcrumbs-separator': { mx: 0.5, color: 'text.disabled' } }}>
+          <Link {...dropProps('')} component="button" underline="hover" color={path.length ? 'text.secondary' : 'text.primary'} onClick={() => navigate([])} sx={{ fontSize: 14 }} aria-label="Root directory">{path.length ? 'server' : 'server/'}</Link>
           {path.map((part, index) => <Link {...dropProps(path.slice(0, index + 1).join('/'))} key={index} component="button" underline="hover" color="text.primary" onClick={() => navigate(path.slice(0, index + 1))} sx={{ fontSize: 14 }}>{part}</Link>)}
         </Breadcrumbs>
         <Stack direction="row" spacing={1}>
