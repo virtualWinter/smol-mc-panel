@@ -3,6 +3,7 @@ export interface Server {
   installed: boolean
   jarVersion?: string
   download?: DownloadProgressState
+  startupIssue?: string
   eulaAccepted: boolean
   id: string
   name: string

@@ -32,6 +32,8 @@ On restart, the old `network/` directory is migrated to `data/` if the destinati
 
 The initial proxy binds to loopback port 25565; explicitly configured backend ports must also be loopback-only. Velocity uses modern forwarding, online-mode authentication, and a shared secret. BungeeCord uses online-mode and IP forwarding, with matching Paper/Spigot forwarding settings. Proxy configurations are generated only when missing, never overwritten; update their backend lists when changing the network. To expose Minecraft itself, deliberately configure the proxy listener and your firewall. Do not expose backend ports.
 
+BungeeCord cannot start with an empty `servers` map. Define a real backend in `data/servers/proxy/config.yml` and add its name to the listener's `priorities` list. The panel validates these before launching Java and shows a configuration warning instead of allowing a doomed startup. This does not create or launch a backend. Ctrl+C in the console clears input; use **Stop** to stop the managed process (with termination after a graceful-shutdown timeout if necessary).
+
 ## Runtime behavior
 
 - Start, graceful Stop/Restart, real stdin commands, ANSI stdout/stderr, and capped crash recovery.

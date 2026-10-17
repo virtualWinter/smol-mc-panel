@@ -26,6 +26,7 @@ export default function ServerPage({ serverId, page }: { serverId: string; page:
       {!server ? <Typography component="h1" variant="h4">Server not found</Typography> : (
         <>
           <ServerHeader server={server} page={page} />
+          {server.startupIssue && <Alert severity="warning" action={<Button href={`/${server.id}/files`} color="inherit">Files</Button>}>{server.startupIssue}</Alert>}
           {server.download && !['complete'].includes(server.download.phase) && (page !== 'settings' || server.download.label?.startsWith('Java')) && <Paper variant="outlined" sx={{ p: 2 }}><DownloadProgress progress={server.download} /></Paper>}
           {!server.installed && <Alert severity="info">Install {server.jarFile} from Settings or upload it in Files.</Alert>}
           {page === 'files' ? <ServerFiles server={server} /> : page === 'backups' ? <ServerBackups server={server} /> : page === 'settings' ? <ServerSettings server={server} /> : page !== '' ? <Typography color="text.secondary">Page not found</Typography> : (
@@ -34,8 +35,8 @@ export default function ServerPage({ serverId, page }: { serverId: string; page:
             <Box sx={{ minWidth: 0 }}><ServerConsole server={server} /></Box>
             <Stack spacing={2}>
               <Stack direction="row" spacing={1} aria-label="Power controls" sx={{ '& .MuiButton-root': { flex: 1, minWidth: 0 } }}>
-                <Button size="small" variant="outlined" onClick={() => power('Start')}>Start</Button>
-                <Button size="small" variant="outlined" onClick={() => power('Restart')}>Restart</Button>
+                <Button size="small" variant="outlined" disabled={Boolean(server.startupIssue)} onClick={() => power('Start')}>Start</Button>
+                <Button size="small" variant="outlined" disabled={Boolean(server.startupIssue)} onClick={() => power('Restart')}>Restart</Button>
                 <Button size="small" variant="outlined" color="error" onClick={() => power('Stop')}>Stop</Button>
               </Stack>
               <ServerStats server={server} />

@@ -48,5 +48,8 @@ test('explicit BungeeCord configuration provisions a proxy without inventing bac
     assert.equal(existsSync(resolve(root, 'servers/survival')), false)
     assert.equal(existsSync(resolve(root, 'forwarding.secret')), false)
     assert.ok(readFileSync(resolve(root, 'servers/proxy/config.yml'), 'utf8').includes('servers: {}'))
+    assert.match(state.servers[0].startupIssue!, /at least one backend/u)
+    writeFileSync(resolve(root, 'servers/proxy/bungeecord.jar'), 'not executed')
+    await assert.rejects(runtime.power('proxy', 'Start'), /at least one backend/u)
   } finally { await runtime.shutdown(); rmSync(root, { recursive: true, force: true }) }
 })
