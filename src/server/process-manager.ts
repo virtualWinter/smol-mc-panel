@@ -16,6 +16,7 @@ export interface ManagedProcess {
   restartTimer?: ReturnType<typeof setTimeout>
   lastTps?: number
   incompatibleJava?: boolean
+  invalidConfiguration?: boolean
 }
 
 interface Options {
@@ -46,6 +47,7 @@ export class ProcessManager {
     if (item.logs.length > 1000) item.logs.splice(0, item.logs.length - 1000)
     const plain = stripVTControlCharacters(line)
     if (item.status === 'Starting' && plain.includes('UnsupportedClassVersionError')) item.incompatibleJava = true
+    if (item.status === 'Starting' && (plain.includes('Your configuration is invalid') || plain.includes('java.lang.IllegalArgumentException: No servers defined'))) item.invalidConfiguration = true
     if (/TPS from last/u.test(plain)) {
       const value = Number(plain.split(':').at(-1)?.match(/[\d.]+/u)?.[0])
       if (Number.isFinite(value)) item.lastTps = Math.min(20, value)
@@ -65,6 +67,7 @@ export class ProcessManager {
     item.intentionalStop = false
     item.lastTps = undefined
     item.incompatibleJava = false
+    item.invalidConfiguration = false
     item.status = 'Starting'
     const executable = this.options.executable?.(config)
     if (!executable && !this.options.launch) { item.status = 'Offline'; throw new PanelError('The panel-managed Java runtime is not ready.') }
@@ -95,7 +98,8 @@ export class ProcessManager {
       item.status = 'Offline'
       this.log(config.id, `[Panel] Process exited (${signal ?? code ?? 'unknown'}).`)
       if (item.incompatibleJava) this.log(config.id, '[Panel] Java is incompatible with this JAR. Automatic restarts are disabled; use a compatible Java version before starting again.')
-      if (!item.incompatibleJava && !item.intentionalStop && !this.shuttingDown && config.restartOnCrash && (code !== 0 || signal !== null)) {
+      if (item.invalidConfiguration) this.log(config.id, '[Panel] Configuration is invalid. Automatic restarts are disabled; fix the configuration before starting again.')
+      if (!item.incompatibleJava && !item.invalidConfiguration && !item.intentionalStop && !this.shuttingDown && config.restartOnCrash && (code !== 0 || signal !== null)) {
         item.restarts = item.restarts.filter((time) => Date.now() - time < 600_000)
         if (item.restarts.length >= 5) { this.log(config.id, '[Panel] Crash recovery paused after 5 failures in 10 minutes.'); return }
         item.restarts.push(Date.now())

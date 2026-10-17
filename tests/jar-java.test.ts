@@ -4,7 +4,8 @@ import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:f
 import { resolve } from 'node:path'
 import test from 'node:test'
 import { requiredJava } from '../src/server/jar-java'
-import { loadConfig, proxyConfig, saveConfig } from '../src/server/config'
+import { loadConfig, saveConfig } from '../src/server/config'
+import { defaults } from './helpers'
 import { NetworkRuntime } from '../src/server/runtime'
 
 export function fixtureJar(path: string, major: number) {
@@ -38,7 +39,7 @@ test('JAR entry-point class versions distinguish Java 21 from Java 25', async ()
 
 test('runtime upgrades and persists Java 25 before launching a Java-25 JAR', async () => {
   const root = mkdtempSync('/tmp/opencode/runtime-jar-java-')
-  saveConfig(root, [proxyConfig('velocity')])
+  saveConfig(root, defaults())
   const runtime = new NetworkRuntime(root, false)
   try {
     fixtureJar(resolve(root, 'servers/proxy/velocity.jar'), 69)

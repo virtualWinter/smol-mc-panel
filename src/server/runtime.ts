@@ -15,7 +15,7 @@ import type { Backup, DownloadProgressState, MetricHistory, PanelState, Server }
 import { acquireLock } from './lock'
 import { installedSource, reinstallJar } from './downloads'
 import { installJava, managedJava } from './java'
-import { bungeeStartupIssue } from './proxy-config'
+import { proxyStartupIssue } from './proxy-config'
 import { requiredJava } from './jar-java'
 
 const execute = promisify(execFile)
@@ -106,10 +106,8 @@ export class NetworkRuntime {
   private checkAssets(config: ServerConfig) {
     if (!this.installed(config.id)) throw new PanelError(`Upload ${config.jarFile} in Files before starting this server.`)
     if (!this.eulaAccepted(config.id)) throw new PanelError('Review and accept the Minecraft EULA in Settings before starting Paper.')
-    if (config.kind === 'bungeecord') {
-      const issue = bungeeStartupIssue(this.directory(config.id))
-      if (issue) throw new PanelError(issue)
-    }
+    const issue = proxyStartupIssue(config.kind, this.directory(config.id))
+    if (issue) throw new PanelError(issue)
     startupArgs(config)
   }
 
@@ -300,7 +298,7 @@ export class NetworkRuntime {
     const servers: Server[] = this.configs.map((config) => {
       const item = this.manager.get(config.id), history = this.metrics[config.id], players = this.playerCounts.get(config.id)
       const source = installedSource(resolve(this.root, 'installations', `${config.id}.json`), config.kind, config.jarFile)
-      return { ...config, startupIssue: config.kind === 'bungeecord' ? bungeeStartupIssue(this.directory(config.id)) : undefined, download: this.downloads[config.id] ? { ...this.downloads[config.id] } : undefined, jarVersion: source ? `${source.version} (build ${source.build})` : undefined, installed: this.installed(config.id), eulaAccepted: this.eulaAccepted(config.id), status: item.status, logs: [...item.logs], logOffset: item.logCount - item.logs.length, cpu: history.cpu.length ? `${history.cpu.at(-1)!.toFixed(1)}%` : '—', memory: history.ram.length ? `${history.ram.at(-1)!.toFixed(0)} / ${config.maxMemory} MiB` : `— / ${config.maxMemory} MiB`, players: players ? `${players.online} / ${players.max}` : '—' }
+      return { ...config, startupIssue: proxyStartupIssue(config.kind, this.directory(config.id)), download: this.downloads[config.id] ? { ...this.downloads[config.id] } : undefined, jarVersion: source ? `${source.version} (build ${source.build})` : undefined, installed: this.installed(config.id), eulaAccepted: this.eulaAccepted(config.id), status: item.status, logs: [...item.logs], logOffset: item.logCount - item.logs.length, cpu: history.cpu.length ? `${history.cpu.at(-1)!.toFixed(1)}%` : '—', memory: history.ram.length ? `${history.ram.at(-1)!.toFixed(0)} / ${config.maxMemory} MiB` : `— / ${config.maxMemory} MiB`, players: players ? `${players.online} / ${players.max}` : '—' }
     })
     let files: PanelState['files'] = {}
     if (serverId && this.configs.some((server) => server.id === serverId) && request.pathname.endsWith('/files')) {

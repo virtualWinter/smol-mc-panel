@@ -68,3 +68,20 @@ test('Java compatibility failures do not enter crash-recovery loops', async () =
     assert.ok(manager.get(config.id).logs.some((line) => line.includes('Automatic restarts are disabled')))
   } finally { await manager.shutdown([config]) }
 })
+
+test('invalid Velocity configurations do not enter crash-recovery loops', async () => {
+  const config = defaults()[0]
+  let launches = 0
+  const manager = new ProcessManager({
+    directory: () => process.cwd(), beforeStart: () => {}, restartDelay: 5,
+    launch: () => { launches++; return spawn(process.execPath, ['-e', 'console.error("Your configuration is invalid. Velocity will not start up until the errors are resolved."); process.exit(1)'], { stdio: 'pipe' }) },
+  })
+  try {
+    await manager.start(config)
+    await once(manager.get(config.id).child!, 'close')
+    await delay(30)
+    assert.equal(launches, 1)
+    assert.equal(manager.get(config.id).restartTimer, undefined)
+    assert.ok(manager.get(config.id).logs.some((line) => line.includes('Configuration is invalid. Automatic restarts are disabled')))
+  } finally { await manager.shutdown([config]) }
+})

@@ -8,7 +8,7 @@ import { loadConfig, saveConfig } from '../src/server/config'
 import { requests } from '../src/server/request-context'
 import { defaults } from './helpers'
 import type { SetupServerInput } from '../src/types'
-import { bungeeStartupIssue } from '../src/server/proxy-config'
+import { bungeeStartupIssue, velocityStartupIssue } from '../src/server/proxy-config'
 
 const password = 'correct-password-123'
 const lobby: SetupServerInput = { id: 'lobby', name: 'Lobby', port: 25566, maxMemory: 2048, javaVersion: 'Java 25' }
@@ -46,7 +46,10 @@ for (const kind of ['velocity', 'bungeecord'] as const) test(`first-start ${kind
     assert.equal(readFileSync(resolve(root, 'servers/lobby/eula.txt'), 'utf8').includes('eula=false'), true)
     assert.equal(existsSync(resolve(root, 'servers/lobby/server.jar')), false)
     if (kind === 'bungeecord') assert.equal(bungeeStartupIssue(resolve(root, 'servers/proxy')), undefined)
-    else assert.ok(readFileSync(resolve(root, 'servers/proxy/velocity.toml'), 'utf8').includes('lobby = "127.0.0.1:25566"'))
+    else {
+      assert.ok(readFileSync(resolve(root, 'servers/proxy/velocity.toml'), 'utf8').includes('lobby = "127.0.0.1:25566"'))
+      assert.equal(velocityStartupIssue(resolve(root, 'servers/proxy')), undefined)
+    }
     assert.ok(readAccount(root))
     assert.equal(request.user, 'owner')
     assert.ok(request.headers.get('Set-Cookie')?.includes('HttpOnly; SameSite=Strict'))

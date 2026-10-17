@@ -34,6 +34,8 @@ The initial proxy binds to loopback port 25565; explicitly configured backend po
 
 BungeeCord cannot start with an empty `servers` map. Define a real backend in `data/servers/proxy/config.yml` and add its name to the listener's `priorities` list. The panel validates these before launching Java and shows a configuration warning instead of allowing a doomed startup. This does not create or launch a backend. Ctrl+C in the console clears input; use **Stop** to stop the managed process (with termination after a graceful-shutdown timeout if necessary).
 
+Velocity configs include an explicit empty `[forced-hosts]` table so Velocity does not fill in example host mappings. Any configured forced-host targets must reference real `[servers]` entries. The panel validates proxy routing before launch and disables crash retries when a proxy reports a fatal configuration error.
+
 ## Runtime behavior
 
 - Start, graceful Stop/Restart, real stdin commands, ANSI stdout/stderr, and capped crash recovery.
