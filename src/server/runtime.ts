@@ -11,7 +11,7 @@ import { safePath, serverDirectory } from './paths'
 import { ProcessManager } from './process-manager'
 import { provisionNetwork } from './provision'
 import { startupArgs } from './startup'
-import type { Backup, MetricHistory, PanelState, Server } from '../types'
+import type { Backup, DownloadProgressState, MetricHistory, PanelState, Server } from '../types'
 import { acquireLock } from './lock'
 import { installedSource, reinstallJar } from './downloads'
 
@@ -30,6 +30,7 @@ export class NetworkRuntime {
   private backupJobs = new Set<string>()
   private writeJobs = new Set<string>()
   private javaChecks = new Set<string>()
+  private downloads: Record<string, DownloadProgressState> = {}
   private releaseLock: () => void
 
   constructor(readonly root: string, autostart = true) {
@@ -163,8 +164,15 @@ export class NetworkRuntime {
     const config = this.config(id)
     await this.withWrite(id, async () => {
       this.manager.log(id, `[Panel] Downloading ${config.kind === 'velocity' ? 'Velocity' : 'Paper'} JAR.`)
-      const source = await reinstallJar({ directory: this.directory(id), jarFile: config.jarFile, project: config.kind === 'velocity' ? 'velocity' : 'paper', manifest: resolve(this.root, 'installations', `${id}.json`) })
-      this.manager.log(id, `[Panel] Installed ${source.project} ${source.version} build ${source.build}. Server remains stopped.`)
+      try {
+        const source = await reinstallJar({ directory: this.directory(id), jarFile: config.jarFile, project: config.kind === 'velocity' ? 'velocity' : 'paper', manifest: resolve(this.root, 'installations', `${id}.json`), onProgress: (progress) => { this.downloads[id] = progress } })
+        this.manager.log(id, `[Panel] Installed ${source.project} ${source.version} build ${source.build}. Server remains stopped.`)
+      } catch (error) {
+        const message = error instanceof PanelError ? error.message : 'Download failed.'
+        this.downloads[id] = { ...(this.downloads[id] ?? { received: 0, total: 0, bytesPerSecond: 0 }), phase: 'failed', error: message }
+        this.manager.log(id, `[Panel] ${message}`)
+        throw error
+      }
     })
   }
 
@@ -234,7 +242,7 @@ export class NetworkRuntime {
     const servers: Server[] = this.configs.map((config) => {
       const item = this.manager.get(config.id), history = this.metrics[config.id], players = this.playerCounts.get(config.id)
       const source = installedSource(resolve(this.root, 'installations', `${config.id}.json`), config.kind === 'velocity' ? 'velocity' : 'paper', config.jarFile)
-      return { ...config, jarVersion: source ? `${source.version} (build ${source.build})` : undefined, installed: this.installed(config.id), eulaAccepted: this.eulaAccepted(config.id), status: item.status, logs: [...item.logs], logOffset: item.logCount - item.logs.length, cpu: history.cpu.length ? `${history.cpu.at(-1)!.toFixed(1)}%` : '—', memory: history.ram.length ? `${history.ram.at(-1)!.toFixed(0)} / ${config.maxMemory} MiB` : `— / ${config.maxMemory} MiB`, players: players ? `${players.online} / ${players.max}` : '—' }
+      return { ...config, download: this.downloads[config.id] ? { ...this.downloads[config.id] } : undefined, jarVersion: source ? `${source.version} (build ${source.build})` : undefined, installed: this.installed(config.id), eulaAccepted: this.eulaAccepted(config.id), status: item.status, logs: [...item.logs], logOffset: item.logCount - item.logs.length, cpu: history.cpu.length ? `${history.cpu.at(-1)!.toFixed(1)}%` : '—', memory: history.ram.length ? `${history.ram.at(-1)!.toFixed(0)} / ${config.maxMemory} MiB` : `— / ${config.maxMemory} MiB`, players: players ? `${players.online} / ${players.max}` : '—' }
     })
     let files: PanelState['files'] = {}
     if (serverId && this.configs.some((server) => server.id === serverId) && request.pathname.endsWith('/files')) {

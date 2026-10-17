@@ -4,6 +4,7 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSy
 import { resolve } from 'node:path'
 import test from 'node:test'
 import { reinstallJar } from '../src/server/downloads'
+import type { DownloadProgressState } from '../src/types'
 
 const body = Buffer.from('PK\x03\x04verified-jar')
 const downloadUrl = 'https://fill-data.papermc.io/v1/objects/test/server.jar'
@@ -23,7 +24,7 @@ function mockRequest(calls: string[], corrupt = false): typeof fetch {
     assert.equal(url, downloadUrl)
     const bytes = Uint8Array.from(body)
     if (corrupt) bytes[bytes.length - 1] ^= 1
-    return new Response(bytes, { headers: { 'Content-Length': String(bytes.length) } })
+    return new Response(new ReadableStream({ start(controller) { const middle = Math.floor(bytes.length / 2); controller.enqueue(bytes.slice(0, middle)); controller.enqueue(bytes.slice(middle)); controller.close() } }), { headers: { 'Content-Length': String(bytes.length) } })
   }
 }
 
@@ -33,11 +34,18 @@ test('reinstall downloads a stable build, verifies it, and pins future reinstall
     writeFileSync(resolve(root, 'server.jar'), 'old-jar')
     writeFileSync(resolve(root, 'world.txt'), 'do-not-touch')
     const calls: string[] = []
-    const options = { directory: root, jarFile: 'server.jar', project: 'paper' as const, manifest: resolve(root, 'installations/paper.json'), userAgent, request: mockRequest(calls) }
+    const progress: DownloadProgressState[] = []
+    const options = { directory: root, jarFile: 'server.jar', project: 'paper' as const, manifest: resolve(root, 'installations/paper.json'), userAgent, request: mockRequest(calls), onProgress: (value: DownloadProgressState) => progress.push(value) }
     const source = await reinstallJar(options)
     assert.equal(source.build, 42)
     assert.deepEqual(readFileSync(resolve(root, 'server.jar')), body)
     assert.equal(readFileSync(resolve(root, 'world.txt'), 'utf8'), 'do-not-touch')
+    assert.equal(progress[0].phase, 'resolving')
+    assert.ok(progress.some((value) => value.phase === 'downloading' && value.received > 0 && value.received < value.total && value.bytesPerSecond > 0))
+    assert.ok(progress.some((value) => value.phase === 'verifying'))
+    assert.ok(progress.some((value) => value.phase === 'installing'))
+    assert.equal(progress.at(-1)!.phase, 'complete')
+    assert.equal(progress.at(-1)!.received, body.length)
     calls.length = 0
     await reinstallJar(options)
     assert.deepEqual(calls, [downloadUrl])

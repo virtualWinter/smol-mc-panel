@@ -29,7 +29,7 @@ The generated proxy and backends initially bind to loopback ports 25565–25567.
 - Files are read/written on disk, with traversal/symlink checks. Stop a server before changing its files. File editing is limited to 512 KiB text files.
 - Backups are actual `.tar.gz` archives under `network/backups/<id>/`. The server must be stopped. Create/delete are supported; restore/download are not implemented yet.
 - CPU/RAM come from Linux `/proc`, player counts from Minecraft status pings, and Paper TPS from the `tps` command every 15 seconds. Per-proxy network throughput is not implemented and is shown as unavailable, never synthetic.
-- The browser refreshes server-rendered snapshots over the RSC transport every two seconds. Terminal rendering, dragging, and input are client interactions; authoritative state and mutations remain server-side.
+- The browser refreshes server-rendered snapshots over the RSC transport every second, independently of long-running actions. Reinstalls show server-reported bytes, percentage, average speed, verification, and completion/error state, including after reload. Terminal rendering, dragging, and input are client interactions; authoritative state and mutations remain server-side.
 - Logs/metric history are bounded and in memory; configurations, files, worlds, and backups persist. Graceful panel shutdown stops managed Java processes. A lock prevents two panels from managing the same network, and a PID registry blocks duplicate starts if Java survived an abrupt panel exit. After changing runtime code during development, restart the panel rather than relying on HMR.
 
 ## Access and configuration

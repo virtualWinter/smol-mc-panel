@@ -4,6 +4,7 @@ import { dirname, resolve } from 'node:path'
 import { PanelError } from './errors'
 import { safePath } from './paths'
 import { MAX_UPLOAD } from './files'
+import type { DownloadProgressState } from '../types'
 
 const api = 'https://fill.papermc.io/v3/projects'
 interface JarSource {
@@ -66,13 +67,18 @@ interface ReinstallOptions {
   manifest: string
   userAgent?: string
   request?: typeof fetch
+  onProgress?: (progress: DownloadProgressState) => void
 }
 
-export async function reinstallJar({ directory, jarFile, project, manifest, userAgent = process.env.PAPERMC_USER_AGENT || 'smol-mc-panel/0.0.0 (https://arsn.cc; admin@arsn.cc)', request = fetch }: ReinstallOptions) {
+export async function reinstallJar({ directory, jarFile, project, manifest, userAgent = process.env.PAPERMC_USER_AGENT || 'smol-mc-panel/0.0.0 (https://arsn.cc; admin@arsn.cc)', request = fetch, onProgress }: ReinstallOptions) {
+  onProgress?.({ phase: 'resolving', received: 0, total: 0, bytesPerSecond: 0 })
   if (!userAgent || userAgent.length > 512 || /[\r\n]/u.test(userAgent) || !/(?:https?:\/\/|mailto:|@)/u.test(userAgent)) throw new PanelError('Set PAPERMC_USER_AGENT to identify your panel with a contact URL or email, as required by PaperMC.')
   const target = safePath(directory, jarFile)
   if (!existsSync(dirname(target))) throw new PanelError('The configured JAR directory does not exist.')
   const source = installedSource(manifest, project, jarFile) ?? await latestSource(project, jarFile, request, userAgent)
+  const started = performance.now()
+  const report = (phase: DownloadProgressState['phase'], received: number) => onProgress?.({ phase, received, total: source.size, bytesPerSecond: received / Math.max(0.001, (performance.now() - started) / 1000) })
+  report('downloading', 0)
   const temporary = resolve(dirname(target), `.panel-download-${randomUUID()}.tmp`)
   let descriptor: number | undefined
   try {
@@ -90,14 +96,18 @@ export async function reinstallJar({ directory, jarFile, project, manifest, user
       const bytes = Buffer.from(chunk)
       let offset = 0
       while (offset < bytes.length) offset += writeSync(descriptor, bytes, offset, bytes.length - offset)
+      report('downloading', size)
     }
     closeSync(descriptor); descriptor = undefined
+    report('verifying', size)
     if (size !== source.size || hash.digest('hex') !== source.sha256) throw new PanelError('JAR verification failed. The existing JAR was not changed.')
     mkdirSync(dirname(manifest), { recursive: true, mode: 0o700 })
     writeFileSync(`${manifest}.tmp`, JSON.stringify(source, null, 2), { mode: 0o600 })
+    report('installing', size)
     // Never truncate the existing JAR: replace it only after the full download verifies.
     renameSync(temporary, target)
     renameSync(`${manifest}.tmp`, manifest)
+    report('complete', size)
     return source
   } catch (error) {
     if (error instanceof PanelError) throw error

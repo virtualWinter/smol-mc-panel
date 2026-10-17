@@ -3,6 +3,7 @@ import { Box, Button, FormControlLabel, MenuItem, Paper, Stack, Switch, TextFiel
 import { usePanel } from '../data/usePanel'
 import type { ServerProps, Server } from '../types'
 import type { TextFieldProps } from '@mui/material'
+import DownloadProgress from './DownloadProgress'
 
 function SettingsForm({ server }: ServerProps) {
   const { saveSettings, acceptEula, reinstallServer, javaVersions } = usePanel()
@@ -10,7 +11,7 @@ function SettingsForm({ server }: ServerProps) {
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
   const [reinstalling, setReinstalling] = useState(false)
-  const [reinstalled, setReinstalled] = useState(false)
+  const downloadActive = server.download && !['complete', 'failed'].includes(server.download.phase)
   const change = (field: keyof Server, value: string | boolean) => {
     setValues((current) => ({ ...current, [field]: value }))
     setSaved(false)
@@ -49,15 +50,15 @@ function SettingsForm({ server }: ServerProps) {
         <Stack spacing={1.5} sx={{ alignItems: 'flex-start' }}>
           <Typography component="h2" variant="subtitle1" sx={{ fontWeight: 600 }}>Server JAR</Typography>
           <Typography variant="body2" color="text.secondary">{server.jarVersion ?? 'Latest stable release on first install'}. Worlds, plugins, and settings are kept.</Typography>
-          <Button type="button" variant="outlined" disabled={reinstalling || server.status !== 'Offline'} onClick={async () => {
+          <Button type="button" variant="outlined" disabled={reinstalling || downloadActive || server.status !== 'Offline'} onClick={async () => {
             const version = server.jarVersion ?? 'the latest stable release (this may change the Minecraft version and Java requirements; back up your worlds first)'
             if (!window.confirm(`Download ${version} and replace ${server.jarFile}? Other server files will not be deleted.`)) return
-            setReinstalling(true); setReinstalled(false); setError('')
-            try { await reinstallServer(server.id); setReinstalled(true) }
+            setReinstalling(true); setError('')
+            try { await reinstallServer(server.id) }
             catch (error) { setError(String(error)) }
             finally { setReinstalling(false) }
-          }}>{reinstalling ? 'Downloading…' : 'Reinstall'}</Button>
-          {reinstalled && <Typography variant="caption" role="status">JAR reinstalled. Server remains stopped.</Typography>}
+          }}>{reinstalling || downloadActive ? 'Reinstalling…' : 'Reinstall'}</Button>
+          {(server.download || reinstalling) && <DownloadProgress progress={reinstalling && !downloadActive ? { phase: 'resolving', received: 0, total: 0, bytesPerSecond: 0 } : server.download ?? { phase: 'resolving', received: 0, total: 0, bytesPerSecond: 0 }} />}
         </Stack>
       </Paper>
       {server.kind === 'paper' && !server.eulaAccepted && <Paper variant="outlined" sx={{ p: 2 }}>

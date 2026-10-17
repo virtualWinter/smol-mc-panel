@@ -2,6 +2,7 @@ export interface Server {
   kind: 'velocity' | 'paper'
   installed: boolean
   jarVersion?: string
+  download?: DownloadProgressState
   eulaAccepted: boolean
   id: string
   name: string
@@ -26,6 +27,14 @@ export interface Server {
 export interface ServerProps { server: Server }
 export interface ServerFile { name: string; size: string; directory?: boolean; modified?: string }
 export interface Backup { id: string; name: string; created: string; size: string }
+
+export interface DownloadProgressState {
+  phase: 'resolving' | 'downloading' | 'verifying' | 'installing' | 'complete' | 'failed'
+  received: number
+  total: number
+  bytesPerSecond: number
+  error?: string
+}
 
 export interface FileEntry extends ServerFile { path: string; content?: string; binary?: boolean }
 export interface MetricHistory { cpu: number[]; ram: number[]; players: number[]; tps: number[]; network?: number[] }
