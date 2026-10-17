@@ -45,7 +45,6 @@ function FileManager({ server }: ServerProps) {
           <Typography variant="caption" sx={{ px: 1.5, py: 0.75 }}>Size</Typography>
           <Typography variant="caption" sx={{ display: { xs: 'none', sm: 'block' }, px: 1.5, py: 0.75 }}>Modified</Typography>
         </Box>}
-        {path.length > 0 && <ListItemButton {...dropProps(path.slice(0, -1).join('/'))} onClick={() => navigate(path.slice(0, -1))} divider><ListItemText primary=".." /></ListItemButton>}
         <List disablePadding sx={view === 'grid' ? { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 0.5, p: 1 } : { py: 0.5 }}>
           {files.map((file) => (
             <ListItemButton key={file.name} title={file.name} sx={view === 'grid' ? { flexDirection: 'column', justifyContent: 'center', textAlign: 'center', borderRadius: 1, p: 2, minHeight: 104 } : { display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr) 72px', sm: 'minmax(0, 1fr) 100px 180px' }, px: 0, py: 0.25, minHeight: 42, '&.Mui-focusVisible': { outline: '1px solid', outlineColor: 'primary.main', outlineOffset: -1 } }} onClick={() => {
