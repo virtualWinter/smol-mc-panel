@@ -1,7 +1,13 @@
 import react from '@vitejs/plugin-react'
+import rsc from '@vitejs/plugin-rsc'
 import { defineConfig } from 'vite'
 
-// https://vite.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [rsc({ entries: {
+    rsc: './src/framework/entry.rsc.tsx',
+    ssr: './src/framework/entry.ssr.tsx',
+    client: './src/framework/entry.browser.tsx',
+  } }), react()],
+  server: { host: '127.0.0.1' },
+  preview: { host: '127.0.0.1' },
 })

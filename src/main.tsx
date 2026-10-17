@@ -1,8 +1,10 @@
-import { StrictMode } from 'react'
-import { createRoot } from 'react-dom/client'
+'use client'
+
+import { lazy, StrictMode, Suspense, useSyncExternalStore } from 'react'
 import { CssBaseline, ThemeProvider, createTheme } from '@mui/material'
 import './index.css'
-import App from './App'
+const App = lazy(() => import('./App'))
+const subscribe = () => () => {}
 
 const theme = createTheme({
   palette: { mode: 'dark' },
@@ -17,11 +19,15 @@ const theme = createTheme({
   },
 })
 
-createRoot(document.getElementById('root')!).render(
+export default function Panel() {
+  const mounted = useSyncExternalStore(subscribe, () => true, () => false)
+  if (!mounted) return null
+  return (
   <StrictMode>
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <App />
+      <Suspense fallback={null}><App /></Suspense>
     </ThemeProvider>
-  </StrictMode>,
-)
+  </StrictMode>
+  )
+}

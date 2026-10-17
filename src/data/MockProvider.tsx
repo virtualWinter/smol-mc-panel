@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState } from 'react'
 import { networkServers } from './mockData'
 import type { ReactNode } from 'react'
 import type { Server } from '../types'
+import { getServers } from '../server/actions'
 
 interface MockState {
   servers: Server[]
@@ -21,6 +22,13 @@ export function MockProvider({ children }: { children: ReactNode }) {
     } catch { /* Storage may be unavailable. */ }
     return networkServers
   })
+  useEffect(() => {
+    let cancelled = false
+    getServers().then((data) => {
+      if (!cancelled) setServers((current) => current.map((item) => data.find((server) => server.id === item.id) ?? item))
+    }).catch((error: unknown) => console.error('Could not load servers', error))
+    return () => { cancelled = true }
+  }, [])
   useEffect(() => {
     try { localStorage.setItem('server-order', JSON.stringify(servers.map((server) => server.id))) } catch { /* Keep ordering in memory if storage is unavailable. */ }
   }, [servers])
