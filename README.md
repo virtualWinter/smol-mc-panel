@@ -53,6 +53,23 @@ Velocity configs include an explicit empty `[forced-hosts]` table so Velocity do
 
 A step further down the same spirit: the agent JAR is compiled by the panel with the managed JDK (`javac`/`jar`) into `data/agents/`, sunsetting its private ASM copy under `cc.arsn.panel.metrics.internal.asm` (pinned download, SHA-256 verified) so it can never shadow the server's own ASM. If the agent cannot build or instrument a server version, the panel continues to run that server with `/proc`-based metrics only, and no restart loops or fatal errors are introduced. The data directory path must not contain `=` (separator in the `-javaagent` argument).
 
+## Docker
+
+The image builds the panel bundle and ships it with the compiled server runtime. The panel downloads and manages its own JDKs inside the persistent volume, so the image itself contains no Java. Volumes hold `data/`, the panel-admin account, panel configuration, servers, downloaded JDKs, and backups.
+
+```sh
+docker compose up -d --build
+```
+
+Open `http://127.0.0.1:5173/` (host port mapped by compose) and complete first-start setup. Data persists in the named `panel-data` volume. Stop the panel with `docker compose down` (or `docker compose stop`); the configured stop timeout outlasts Minecraft's graceful shutdown, and managed Java processes are stopped on panel shutdown. The image runs an unprivileged user (`node`, UID 1000); bind-mounted host directories must be chowned to that UID, and named volumes get it automatically.
+
+- Panel web access is published on 5173. Behind a reverse proxy that rewrites the Host header, set `PANEL_ORIGIN` to the exact external origin, or Server Function origin validation fails.
+- Exposing Minecraft: managed listeners bind to loopback (panel requirement encoded in `panel.json`), and Docker cannot forward to a loopback listener. Two supported options: edit the proxy's bind address to `0.0.0.0:25565` in `data/servers/proxy/velocity.toml` (or `config.yml` `listeners[0].host` for BungeeCord) while the proxy is stopped, keep `panel.json` unchanged, and publish `25565:25565`; or run the container with `network_mode: host`. Backend Paper servers must stay loopback-only.
+- The metrics agent compiles on first server start from `agent/` sources shipped in the image, using the JDK the panel installed under `/data/java/`.
+- The container needs enough RAM for the panel plus every configured server's `maxMemory` at once; sized images should match the network currently hosted.
+- Restore-from-volume backups are unaffected by upgrades; update the image with `docker compose pull && docker compose up -d --build`. RSC/dataset formats and `data/` layout migrations run automatically on first start as described below.
+- The agent JAR is compiled by the panel with the managed JDK (`javac`/`jar`) into `/data/agents/`, sunsetting its private ASM copy under `cc.arsn.panel.metrics.internal.asm` (pinned download, SHA-256 verified) so it can never shadow the server's own ASM. If the agent cannot build or instrument a server version, the panel continues to run that server with `/proc`-based metrics only, and no restart loops or fatal errors are introduced. The data directory path must not contain `=` (separator in the `-javaagent` argument).
+
 ## Access and configuration
 
 The panel binds to `127.0.0.1` by default. First-account setup requires direct local access. Admin passwords are salted with scrypt and stored only as hashes in `data/admin.json` (mode 0600). Signed, HttpOnly, SameSite=Strict cookies keep sessions for seven days; HTTPS deployments also use Secure cookies. All management Server Functions enforce authentication, not just the page UI. Sign out from the network overview. `PANEL_PASSWORD`/HTTP Basic authentication is no longer used.

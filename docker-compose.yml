@@ -1,0 +1,24 @@
+services:
+  panel:
+    build: .
+    image: smol-mc-panel
+    container_name: smol-mc-panel
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+      # Publish the proxy only after switching its bind from 127.0.0.1 to 0.0.0.0
+      # in data/servers/proxy/velocity.toml (or config.yml for BungeeCord).
+      # - "25565:25565"
+    volumes:
+      - panel-data:/data
+    stop_grace_period: 90s
+    environment:
+      # Required when the panel is reached through a reverse proxy that changes
+      # the Host header; server actions are validated against this exact origin.
+      # PANEL_ORIGIN: https://panel.example.com
+      # Optional hardening/behaviour overrides:
+      # PAPERMC_USER_AGENT: smol-mc-panel/0.0.0 (https://arsn.cc; admin@arsn.cc)
+      PANEL_DATA_DIR: /data
+
+volumes:
+  panel-data:
