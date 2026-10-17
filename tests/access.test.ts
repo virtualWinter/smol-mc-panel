@@ -14,12 +14,17 @@ test('pre-setup allows a deliberately declared HTTPS origin behind a trusted pro
   const previous = process.env.PANEL_ORIGIN
   process.env.PANEL_ORIGIN = 'https://panel.arsn.cc'
   try {
-    // The simulated reverse proxy forwards the original Host and scheme.
+    // Standard HTTPS reverse proxy: end-to-end TLS at the last hop.
     const proxied = { headers: { 'x-forwarded-for': '203.0.113.7', 'x-forwarded-proto': 'https' } }
     assert.equal(authorizeRequest(new Request('https://panel.arsn.cc/', proxied), false), undefined)
+    // Cloudflare-proxied origins may still speak plain HTTP behind the proxy.
+    const flexible = { headers: { 'x-forwarded-for': '203.0.113.7', 'cf-connecting-ip': '203.0.113.99', 'cdn-loop': 'cloudflare' } }
+    assert.equal(authorizeRequest(new Request('http://panel.arsn.cc/', flexible), false), undefined)
     // Everything else stays rejected: wrong origin, plain HTTP, and direct requests.
     assert.equal(authorizeRequest(new Request('https://intruder.example/', proxied), false)?.status, 403)
     assert.equal(authorizeRequest(new Request('http://panel.arsn.cc/', proxied), false)?.status, 403)
+    assert.equal(authorizeRequest(new Request('http://panel.arsn.cc/', { headers: { 'cdn-loop': 'cloudflare' } }), false), undefined)
+    assert.equal(authorizeRequest(new Request('http://panel.arsn.cc/'), false)?.status, 403)
     assert.equal(authorizeRequest(new Request('https://panel.arsn.cc/'), false)?.status, 403)
     assert.equal(authorizeRequest(new Request('http://localhost/'), false), undefined)
     // An invalid declaration never widens the loopback-only default.
