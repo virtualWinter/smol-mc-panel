@@ -1,0 +1,6 @@
+name: smol-panel
+version: '1.0'
+main: cc.arsn.panel.permissions.PaperPlugin
+api-version: '1.13'
+description: Applies the network permissions managed in the smol-mc-panel dashboard.
+authors: [smol-mc-panel]

@@ -19,11 +19,12 @@ test('Docker packaging matches the application runtime layout', () => {
   assert.ok(existsSync(entry), 'entrypoint binary exists for the built bundle')
   assert.match(dockerfile, /COPY --from=build \/app\/vite\.config\.ts/u, 'preview runtime loads the RSC plugin config')
   assert.match(dockerfile, /\.vite-temp/u, 'runtime creates writable vite cache directories for the unprivileged user')
-  for (const required of ['COPY --from=build /app/dist ', 'COPY --from=build /app/agent ', 'USER node', 'PANEL_DATA_DIR=/data', '"preview"', '--host', '0.0.0.0']) {
+  for (const required of ['COPY --from=build /app/dist ', 'COPY --from=build /app/agent ', 'COPY --from=build /app/permissions ', 'USER node', 'PANEL_DATA_DIR=/data', '"preview"', '--host', '0.0.0.0']) {
     assert.ok(dockerfile.includes(required), `Dockerfile contains ${required}`)
   }
-  // The built server resolves agent sources relative to its working directory.
+  // The built server resolves agent and permission-plugin sources relative to its working directory.
   assert.ok(existsSync('agent/src/cc/arsn/panel/metrics/Agent.java') && existsSync('agent/src/cc/arsn/panel/metrics/Bridge.java'))
+  assert.ok(existsSync('permissions/shared/cc/arsn/panel/permissions/Permissions.java') && existsSync('permissions/paper/plugin.yml') && existsSync('permissions/velocity/velocity-plugin.json'))
   assert.match(readFileSync('package.json', 'utf8'), /"start": "vite preview"/u)
   assert.match(readFileSync('.dockerignore', 'utf8'), /^data$/mu)
 })

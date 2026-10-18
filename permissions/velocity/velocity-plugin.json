@@ -1,0 +1,9 @@
+{
+  "id": "smol-panel",
+  "name": "smol-panel",
+  "version": "1.0",
+  "description": "Applies the network permissions managed in the smol-mc-panel dashboard.",
+  "authors": ["smol-mc-panel"],
+  "dependencies": [],
+  "main": "cc.arsn.panel.permissions.VelocityPlugin"
+}

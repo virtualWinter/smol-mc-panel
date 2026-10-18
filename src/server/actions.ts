@@ -6,6 +6,7 @@ import { PanelError } from './errors'
 import type { Server, SetupServerInput } from '../types'
 import type { PluginProject } from '../types'
 import type { PlayerAction } from './players'
+import type { PermissionGroupInput, PermissionUserInput } from './permissions'
 
 export async function powerServer(id: string, action: 'Start' | 'Restart' | 'Stop') {
   if (!['Start', 'Restart', 'Stop'].includes(action)) throw new PanelError('Invalid power action.')
@@ -46,3 +47,10 @@ export async function pluginVersions(id: string, source: PluginProject['source']
 export async function installPlugin(id: string, source: PluginProject['source'], project: string, version: string, gameVersion: string) { await runtime().installPlugin(id, source, project, version, gameVersion) }
 export async function removePlugin(id: string, source: PluginProject['source'], project: string) { await runtime().removePlugin(id, source, project) }
 export async function managePlayer(action: PlayerAction, name: string) { await runtime().managePlayer(action, name) }
+
+export async function savePermissionGroup(input: PermissionGroupInput) { runtime().savePermissionGroup(input) }
+export async function removePermissionGroup(name: string) { runtime().removePermissionGroup(name) }
+export async function setDefaultPermissionGroup(name: string) { runtime().setDefaultPermissionGroup(name) }
+export async function savePermissionUser(input: PermissionUserInput) { runtime().savePermissionUser(input) }
+export async function removePermissionUser(uuid: string) { runtime().removePermissionUser(uuid) }
+export async function trackPermissionUser(name: string) { return runtime().trackPermissionUser(name) }

@@ -22,6 +22,8 @@ COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/vite.config.ts ./vite.config.ts
 # The runtime compiles the internal metrics agent from these sources on first start.
 COPY --from=build /app/agent ./agent
+# The runtime compiles the permission plugin from these sources with the managed JDK.
+COPY --from=build /app/permissions ./permissions
 # Runtime stage runs as `node`; vite preview compiles its config into these cache dirs.
 RUN mkdir -p /data /app/node_modules/.vite-temp /app/node_modules/.vite \
   && chown -R node:node /data /app/node_modules/.vite-temp /app/node_modules/.vite \

@@ -1,3 +1,5 @@
+import type { PermissionStore } from './permission-model'
+
 export interface Server {
   kind: 'velocity' | 'paper'
   installed: boolean
@@ -8,6 +10,7 @@ export interface Server {
   startupIssue?: string
   telemetry?: AgentMetrics
   eulaAccepted: boolean
+  permissionPlugin: 'off' | 'installed' | 'pending'
   id: string
   name: string
   address: string
@@ -88,6 +91,7 @@ export interface PanelState {
   playerPolicy: PlayerPolicy
   networkPlayers: NetworkPlayer[]
   plugins: Record<string, InstalledPlugin[]>
+  permissions: PermissionStore
   filePath: string
   javaVersions: string[]
   servers: Server[]

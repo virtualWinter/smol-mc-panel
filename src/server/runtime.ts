@@ -22,6 +22,7 @@ import { TelemetryCollector } from './telemetry'
 import { Backups } from './backups'
 import { Plugins, searchPlugins, pluginReleases } from './plugins'
 import { Players, validatePlayerAction, type PlayerAction } from './players'
+import { Permissions, type PermissionGroupInput, type PermissionUserInput } from './permissions'
 import { readJson, saveJson } from './json-store'
 import { reportedMinecraftVersion, reportedProxyVersion } from '../minecraft-version'
 
@@ -29,6 +30,7 @@ export class NetworkRuntime {
   private backupService: Backups
   private pluginService: Plugins
   private playerService: Players
+  private permissionService: Permissions
   private backupTimer: ReturnType<typeof setInterval>
   private closing = false
   private minecraftVersions: Record<string, string>
@@ -85,6 +87,8 @@ export class NetworkRuntime {
     this.telemetry = new TelemetryCollector(root, (id) => this.manager.get(id).child?.pid)
     this.pluginService = new Plugins(root)
     this.playerService = new Players(root)
+    this.permissionService = new Permissions(root)
+    if (this.permissionService.configured) for (const config of this.configs) this.permissionService.writeSnapshot(this.directory(config.id))
     this.backupService = new Backups(root, {
       ids: () => this.configs.map((s) => s.id), directory: (id) => this.directory(id), assertIdle: (id) => this.assertWritable(id), busy: this.backupJobs,
       running: (id) => Boolean(this.manager.get(id).child),
@@ -127,6 +131,7 @@ export class NetworkRuntime {
     if (live) this.pushProxyTopology(proxy)
     this.metrics[backend.id] = emptyMetrics(false)
     this.playerService.apply(backend.id, this.directory(backend.id))
+    if (this.permissionService.configured) this.permissionService.writeSnapshot(this.directory(backend.id))
   }
 
   removeServer(id: string) {
@@ -254,6 +259,17 @@ export class NetworkRuntime {
     return next
   }
 
+  /** Installs the permission plugin and refreshes the resolved snapshot for one server.
+   *
+   * Runs inside the same stop-the-server write gate as Java and the metrics agent, so the
+   * plugin JAR the server loads on start is always the current build. */
+  private async preparePermissions(config: ServerConfig) {
+    if (!this.permissionService.configured) return
+    this.permissionService.writeSnapshot(this.directory(config.id))
+    const java = this.javaExecutables.get(Number(config.javaVersion.split(' ')[1]))!
+    await this.permissionService.install(config.kind, this.directory(config.id), java)
+  }
+
   private async prepareAgent(config: ServerConfig) {
     if (!this.enableAgent) return
     if (this.root.includes('=')) throw new PanelError('The data path cannot contain = when attaching the metrics agent.')
@@ -288,6 +304,7 @@ export class NetworkRuntime {
         const compatible = await this.compatibleJava(config)
         await this.ensureJava(compatible)
         await this.prepareAgent(compatible)
+        await this.preparePermissions(compatible)
         return compatible
       })
       await this.manager.start(config)
@@ -339,6 +356,7 @@ export class NetworkRuntime {
         const compatible = await this.compatibleJava(config)
         await this.ensureJava(compatible)
         await this.prepareAgent(compatible)
+        await this.preparePermissions(compatible)
         this.downloads[id] = { phase: 'complete', received: source.size, total: source.size, bytesPerSecond: 0 }
         this.manager.log(id, `[Panel] Installed ${source.project} ${source.version} build ${source.build}. Server remains stopped.`)
       } catch (error) {
@@ -411,6 +429,26 @@ export class NetworkRuntime {
     this.config(id); await this.withFileWrite(id, () => this.pluginService.remove(id, this.directory(id), source, project))
   }
 
+  /** Writes the resolved snapshot into every server so live changes reach running games. */
+  private refreshPermissions() {
+    for (const config of this.configs) this.permissionService.writeSnapshot(this.directory(config.id))
+  }
+
+  savePermissionGroup(input: PermissionGroupInput) { this.permissionService.saveGroup(input); this.refreshPermissions() }
+  removePermissionGroup(name: string) { this.permissionService.removeGroup(name); this.refreshPermissions() }
+  setDefaultPermissionGroup(name: string) { this.permissionService.setDefaultGroup(name); this.refreshPermissions() }
+  savePermissionUser(input: PermissionUserInput) { this.permissionService.saveUser(input); this.refreshPermissions() }
+  removePermissionUser(uuid: string) { this.permissionService.removeUser(uuid); this.refreshPermissions() }
+  /** Resolves a name to a UUID and starts tracking it. Existing entries are left untouched. */
+  async trackPermissionUser(name: string) {
+    const player = await this.playerService.identity(name)
+    if (!this.permissionService.store.users.some((user) => user.uuid === player.uuid)) {
+      this.permissionService.saveUser({ uuid: player.uuid, name: player.name, groups: [], permissions: [] })
+      this.refreshPermissions()
+    }
+    return player
+  }
+
   private playerTargets() {
     const targets = this.configs.filter((s) => s.kind === 'paper')
     for (const server of targets) if (this.writeJobs.has(server.id) || this.backupJobs.has(server.id)) throw new PanelError('Wait for backend file and backup operations to finish.')
@@ -441,7 +479,7 @@ export class NetworkRuntime {
     const servers: Server[] = this.configs.map((config) => {
       const item = this.manager.get(config.id), history = this.metrics[config.id], players = this.playerCounts.get(config.id)
       const source = installedSource(resolve(this.root, 'installations', `${config.id}.json`), config.kind, config.jarFile)
-      return { ...config, proxyVersion: reportedProxyVersion(this.telemetry.latest(config.id)) ?? this.proxyVersions[config.id], minecraftVersion: reportedMinecraftVersion(this.telemetry.latest(config.id)) ?? this.minecraftVersions[config.id], telemetry: this.telemetry.latest(config.id), startupIssue: proxyStartupIssue(config.kind, this.directory(config.id)), download: this.downloads[config.id] ? { ...this.downloads[config.id] } : undefined, jarVersion: source ? `${source.version} (build ${source.build})` : undefined, installed: this.installed(config.id), eulaAccepted: this.eulaAccepted(config.id), status: item.status, logs: [...item.logs], logOffset: item.logCount - item.logs.length, cpu: history.cpu.length ? `${history.cpu.at(-1)!.toFixed(1)}%` : '—', memory: history.ram.length ? `${history.ram.at(-1)!.toFixed(0)} / ${config.maxMemory} MiB` : `— / ${config.maxMemory} MiB`, players: players ? `${players.online} / ${players.max}` : '—' }
+      return { ...config, proxyVersion: reportedProxyVersion(this.telemetry.latest(config.id)) ?? this.proxyVersions[config.id], minecraftVersion: reportedMinecraftVersion(this.telemetry.latest(config.id)) ?? this.minecraftVersions[config.id], telemetry: this.telemetry.latest(config.id), startupIssue: proxyStartupIssue(config.kind, this.directory(config.id)), download: this.downloads[config.id] ? { ...this.downloads[config.id] } : undefined, jarVersion: source ? `${source.version} (build ${source.build})` : undefined, installed: this.installed(config.id), eulaAccepted: this.eulaAccepted(config.id), permissionPlugin: this.permissionService.status(config.kind, this.directory(config.id)), status: item.status, logs: [...item.logs], logOffset: item.logCount - item.logs.length, cpu: history.cpu.length ? `${history.cpu.at(-1)!.toFixed(1)}%` : '—', memory: history.ram.length ? `${history.ram.at(-1)!.toFixed(0)} / ${config.maxMemory} MiB` : `— / ${config.maxMemory} MiB`, players: players ? `${players.online} / ${players.max}` : '—' }
     })
     let files: PanelState['files'] = {}
     if (serverId && this.configs.some((server) => server.id === serverId) && request.pathname.endsWith('/files')) {
@@ -453,6 +491,7 @@ export class NetworkRuntime {
     return { servers, files, filePath, backups: Object.fromEntries(this.configs.map((config) => [config.id, this.backupService.list(config.id)])), metrics: structuredClone(this.metrics), javaVersions,
       backupSchedules: structuredClone(this.backupService.schedules), backupJobs: [...this.backupJobs], s3Enabled: Boolean(this.backupService.s3),
       playerPolicy: structuredClone(this.playerService.policy), networkPlayers, plugins: Object.fromEntries(this.configs.map((s) => [s.id, this.pluginService.list(s.id)])),
+      permissions: structuredClone(this.permissionService.store),
     }
   }
 
