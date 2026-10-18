@@ -73,13 +73,54 @@ test('the proxy backend list is reconciled from panel.json on every boot', () =>
     let updated = toml()
     assert.ok(updated.includes('events = "127.0.0.1:25568"'))
     assert.ok(updated.includes('creative = "127.0.0.1:25567"'))
-    assert.ok(updated.includes('"game.example.com" = [ "survival" ]') && !updated.includes('old.example.com'))
-    assert.ok(updated.includes('try = [ "survival" ]'))
+    assert.ok(updated.includes('"game.example.com" = ["survival"]') && !updated.includes('old.example.com'))
+    assert.ok(updated.includes('try = ["survival"]'))
     // Backends removed from panel.json disappear from the proxy on the next boot.
     provisionNetwork(root, defaults())
     updated = toml()
     assert.ok(!updated.includes('events'))
-    assert.ok(updated.includes('"game.example.com" = [ "survival" ]'))
+    assert.ok(updated.includes('"game.example.com" = ["survival"]'))
+  } finally { rmSync(root, { recursive: true, force: true }) }
+})
+
+test('reconciling the backend list preserves untouched velocity.toml content, including comments', () => {
+  const root = mkdtempSync('/tmp/opencode/network-sync-comments-')
+  try {
+    mkdirSync(resolve(root, 'servers/proxy'), { recursive: true })
+    const handTuned = [
+      'config-version = "2.9"',
+      'bind = "0.0.0.0:25565"',
+      'player-info-forwarding-mode = "modern"',
+      '# Should Velocity pass the favicon from the backend server?',
+      'forced-hosts = {}',
+      '',
+      '[servers]',
+      '\tsurvival = "127.0.0.1:25566"',
+      '\tcreative = "127.0.0.1:25567"',
+      '\ttry = ["survival"]',
+      '',
+      '[ping-passthrough]',
+      '\t# Should Velocity pass the version number from the backend server?',
+      '\tversion = false',
+      '',
+      '[advanced]',
+      '\taccept-proxy-protocol = false',
+      '',
+    ].join('\n')
+    writeFileSync(resolve(root, 'servers/proxy/velocity.toml'), handTuned)
+    provisionNetwork(root, [...defaults().slice(0, 2), ...[defaults()[2], { ...defaults()[1], id: 'events', name: 'Events', address: '127.0.0.1:25568', workingDirectory: 'servers/events' }]])
+    const updated = readFileSync(resolve(root, 'servers/proxy/velocity.toml'), 'utf8')
+    // Managed regions follow panel.json; everything else is byte-for-byte identical.
+    assert.ok(updated.includes('events = "127.0.0.1:25568"'))
+    assert.ok(updated.includes('# Should Velocity pass the version number from the backend server?'))
+    assert.ok(updated.includes('\tversion = false'))
+    assert.ok(updated.includes('forced-hosts = {}'))
+    assert.ok(updated.includes('bind = "0.0.0.0:25565"'))
+    assert.equal(updated.split('\n').filter((line) => line.startsWith('#')).length, 1)
+    // Second boot with no changes rewrites nothing, so comments never churn.
+    const afterBoot = updated
+    provisionNetwork(root, [...defaults().slice(0, 2), ...[defaults()[2], { ...defaults()[1], id: 'events', name: 'Events', address: '127.0.0.1:25568', workingDirectory: 'servers/events' }]])
+    assert.equal(readFileSync(resolve(root, 'servers/proxy/velocity.toml'), 'utf8'), afterBoot)
   } finally { rmSync(root, { recursive: true, force: true }) }
 })
 

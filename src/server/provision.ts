@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { parse as parseToml, stringify as stringifyToml } from 'smol-toml'
+import { parse as parseToml } from 'smol-toml'
 import type { ServerConfig } from './config'
 import { serverDirectory } from './paths'
 
@@ -30,28 +30,58 @@ export function rewriteProxyBind(root: string, proxy: ServerConfig) {
   if (updated !== text) { writeFileSync(`${file}.tmp`, updated, { mode: 0o600 }); renameSync(`${file}.tmp`, file) }
 }
 
-/** Keeps the proxy's backend list identical to panel.json, so topology edits never need manual file edits. */
+/** Rewrites one [section] header and its body (up to the next section header), leaving all other lines intact. */
+function setSection(text: string, header: string, body: string) {
+  const span = text.match(new RegExp(`^[ \\t]*\\[${header}\\][ \\t]*$`, 'mu'))
+  const section = `[${header}]\n${body}${body ? '\n' : ''}`
+  if (!span) return text.replace(/\s*$/u, '') + '\n\n' + section
+  const after = text.indexOf('\n', span.index!) + 1
+  const next = text.slice(after).search(/^[ \t]*\[[^\]]+\][ \t]*$/mu)
+  return text.slice(0, span.index!) + section + text.slice(next === -1 ? text.length : after + next)
+}
+
+/** Rewrites one inline `key = {...}` value line, leaving all other lines intact. */
+function setInlineKey(text: string, key: string, value: string) {
+  const line = text.match(new RegExp(`^[ \\t]*${key}[ \\t]*=.*$`, 'mu'))
+  if (!line) return setSection(text, key, '')
+  return text.slice(0, line.index!) + `${key} = ${value}` + text.slice(line.index! + line[0].length)
+}
+
+/** Keeps the proxy's backend list identical to panel.json, so topology edits never need manual file edits.
+ *
+ * Only the `[servers]` table and `forced-hosts` are rewritten (from panel.json, the authoritative list);
+ * everything else — comments, `[advanced]`, passthrough settings — is preserved byte-for-byte. User files
+ * that fail to parse are left untouched; startup validation reports them. */
 export function syncProxyServers(root: string, proxy: ServerConfig, backends: ServerConfig[]) {
   const file = resolve(serverDirectory(root, proxy.workingDirectory), 'velocity.toml')
   if (!existsSync(file)) return
+  const text = readFileSync(file, 'utf8')
   let config: unknown
-  try { config = parseToml(readFileSync(file, 'utf8')) } catch { /* Broken user files stay untouched; startup validation reports them. */ return }
+  try { config = parseToml(text) } catch { return }
   if (!record(config) || !record(config.servers)) return
   const names = backends.map((backend) => backend.id)
-  const previous = JSON.stringify([config.servers, config['forced-hosts']])
-  const servers: Record<string, unknown> = Object.fromEntries(backends.map((backend) => [backend.id, backend.address]))
+  const desiredServers: Record<string, unknown> = Object.fromEntries(backends.map((backend) => [backend.id, backend.address]))
   // A try list still referencing live backends is kept verbatim; anything stale resets to the panel order.
-  servers.try = Array.isArray(config.servers.try) && (config.servers.try as unknown[]).every((name) => typeof name === 'string' && names.includes(name)) ? config.servers.try : names
-  config.servers = servers
+  desiredServers.try = Array.isArray(config.servers.try) && (config.servers.try as unknown[]).every((name) => typeof name === 'string' && names.includes(name)) ? config.servers.try : names
+  const desiredHosts: Record<string, unknown> = {}
   if (record(config['forced-hosts'])) {
-    const hosts: Record<string, unknown> = {}
     for (const [host, targets] of Object.entries(config['forced-hosts'])) {
       const valid = (Array.isArray(targets) ? targets : [targets]).filter((target) => typeof target === 'string' && names.includes(target))
-      if (valid.length) hosts[host] = valid
+      if (valid.length) desiredHosts[host] = valid
     }
-    config['forced-hosts'] = hosts
   }
-  if (JSON.stringify([config.servers, config['forced-hosts']]) !== previous) syncFile(file, readFileSync(file, 'utf8'), stringifyToml(config))
+  const serverLines = Object.entries(desiredServers).filter(([key]) => key !== 'try').map(([id, address]) => `${id} = "${String(address)}"\n`)
+  const serversBody = `${serverLines.join('')}try = ${JSON.stringify(desiredServers.try)}`
+  const hostLines = Object.entries(desiredHosts).map(([host, targets]) => `${JSON.stringify(host)} = ${JSON.stringify(targets)}`).join('\n')
+  let updated = setSection(text, 'servers', serversBody)
+  if (record(config['forced-hosts']) && /^[ \t]*\[forced-hosts\][ \t]*$/mu.test(text)) updated = setSection(updated, 'forced-hosts', hostLines)
+  else if (record(config['forced-hosts']) || Object.keys(desiredHosts).length) updated = setInlineKey(updated, 'forced-hosts', Object.keys(desiredHosts).length ? `{ ${Object.entries(desiredHosts).map(([host, targets]) => `${JSON.stringify(host)} = ${JSON.stringify(targets)}`).join(', ')} }` : '{}')
+  let verified: unknown
+  try { verified = parseToml(updated) } catch { return }
+  if (!record(verified)) return
+  // Semantic comparison against the original file: identical topology rewrites nothing, so comments never churn.
+  if (JSON.stringify(config.servers) === JSON.stringify(desiredServers) && JSON.stringify(config['forced-hosts'] ?? null) === JSON.stringify(desiredHosts)) return
+  syncFile(file, text, updated)
 }
 
 export function provisionNetwork(root: string, servers: ServerConfig[]) {
