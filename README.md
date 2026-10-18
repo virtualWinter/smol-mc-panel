@@ -71,6 +71,8 @@ Open `http://127.0.0.1:5173/` (host port mapped by compose) and complete first-s
 
 ## Dokploy
 
+After setup, use **Network → Manage servers** to create or unregister Paper backends. Stop Velocity first so routing changes take effect on its next start; the backend being removed must also be stopped. Removal always preserves its directory and backups, and preserved directories cannot be reused accidentally. New backends are provisioned without downloading a JAR or accepting the EULA. At least one backend must remain.
+
 Deploy as a Dokploy **Docker Compose** service using this repository's `docker-compose.yml`; Dokploy's Traefik terminates TLS and routes to the panel. Set the service domain in Dokploy and configure the panel env so both layers agree:
 
 ```text

@@ -7,6 +7,32 @@ import { proxyConfig, saveConfig } from '../src/server/config'
 import { writeText } from '../src/server/files'
 import { defaults } from './helpers'
 
+test('backends can be created and removed without deleting their files or backups', async () => {
+  const root = mkdtempSync('/tmp/opencode/topology-')
+  saveConfig(root, defaults())
+  const runtime = new NetworkRuntime(root, false)
+  const input = { id: 'events', name: 'Events', port: 25568, maxMemory: 2048, javaVersion: 'Java 25' }
+  try {
+    runtime.addServer(input)
+    assert.equal(runtime.config('events').address, '127.0.0.1:25568')
+    assert.ok(readFileSync(resolve(root, 'servers/proxy/velocity.toml'), 'utf8').includes('events = "127.0.0.1:25568"'))
+    assert.ok(readFileSync(resolve(root, 'servers/events/eula.txt'), 'utf8').includes('eula=false'))
+    assert.equal(existsSync(resolve(root, 'servers/events/server.jar')), false)
+    assert.throws(() => runtime.addServer(input), /already in use/u)
+    assert.throws(() => runtime.addServer({ ...input, id: 'collision', port: 25566 }))
+    await runtime.createBackup('events')
+    runtime.removeServer('events')
+    assert.throws(() => runtime.config('events'), /not found/u)
+    assert.ok(existsSync(resolve(root, 'servers/events/eula.txt')))
+    assert.ok(existsSync(resolve(root, 'backups/events')))
+    assert.ok(!readFileSync(resolve(root, 'servers/proxy/velocity.toml'), 'utf8').includes('events'))
+    assert.throws(() => runtime.addServer(input), /directory already exists/u)
+    assert.throws(() => runtime.removeServer('proxy'), /cannot be removed/u)
+    runtime.removeServer('creative')
+    assert.throws(() => runtime.removeServer('survival'), /at least one/u)
+  } finally { await runtime.shutdown(); rmSync(root, { recursive: true, force: true }) }
+})
+
 test('config, plugin, and file writes stay allowed while the server runs; strict operations still require a stop', async () => {
   const root = mkdtempSync('/tmp/opencode/hot-files-runtime-')
   saveConfig(root, defaults())

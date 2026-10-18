@@ -3,7 +3,7 @@
 import { runtime } from './store'
 import { moveEntry, readText, uploadEntries, writeText } from './files'
 import { PanelError } from './errors'
-import type { Server } from '../types'
+import type { Server, SetupServerInput } from '../types'
 
 export async function powerServer(id: string, action: 'Start' | 'Restart' | 'Stop') {
   if (!['Start', 'Restart', 'Stop'].includes(action)) throw new PanelError('Invalid power action.')
@@ -19,6 +19,8 @@ export async function saveSettings(id: string, input: Partial<Server>) { runtime
 export async function reorderServers(activeId: string, overId: string) { runtime().reorder(activeId, overId) }
 export async function acceptEula(id: string) { runtime().acceptEula(id) }
 export async function reinstallServer(id: string) { await runtime().reinstall(id) }
+export async function addServer(input: SetupServerInput) { runtime().addServer(input) }
+export async function removeServer(id: string) { runtime().removeServer(id) }
 
 export async function moveFile(id: string, source: string, destination: string) {
   await runtime().withFileWrite(id, () => moveEntry(runtime().directory(id), source, destination))

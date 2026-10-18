@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { promisify } from 'node:util'
-import { loadConfig, saveConfig, validateNetwork, type ServerConfig, javaVersions } from './config'
+import { loadConfig, saveConfig, setupNetwork, validateNetwork, type ServerConfig, javaVersions } from './config'
 import { PanelError } from './errors'
 import { formatBytes, listDirectory } from './files'
 import { appendMetric, emptyMetrics, processUsage, queryPlayers } from './metrics'
@@ -11,7 +11,7 @@ import { safePath, serverDirectory } from './paths'
 import { ProcessManager } from './process-manager'
 import { provisionNetwork } from './provision'
 import { startupArgs } from './startup'
-import type { Backup, DownloadProgressState, MetricHistory, PanelState, Server } from '../types'
+import type { Backup, DownloadProgressState, MetricHistory, PanelState, Server, SetupServerInput } from '../types'
 import { acquireLock } from './lock'
 import { installedSource, reinstallJar } from './downloads'
 import { installJava, managedJava } from './java'
@@ -87,6 +87,40 @@ export class NetworkRuntime {
     const config = this.configs.find((server) => server.id === id)
     if (!config) throw new PanelError('Server not found.')
     return config
+  }
+
+  addServer(input: SetupServerInput) {
+    const backend = setupNetwork([input])[1]
+    if (this.configs.filter((server) => server.kind === 'paper').length >= 20) throw new PanelError('The network supports up to 20 Paper servers.')
+    if (this.configs.some((server) => server.id === backend.id)) throw new PanelError('That server ID is already in use.')
+    if (existsSync(safePath(this.root, backend.workingDirectory))) throw new PanelError('That server directory already exists. Choose a new ID; preserved files will not be overwritten.')
+    const next = [...this.configs, backend]
+    validateNetwork(next)
+    const proxy = next.find((server) => server.kind === 'velocity')!
+    this.assertWritable(proxy.id)
+    provisionNetwork(this.root, next)
+    saveConfig(this.root, next)
+    this.configs = next
+    this.metrics[backend.id] = emptyMetrics(false)
+  }
+
+  removeServer(id: string) {
+    const config = this.config(id)
+    if (config.kind !== 'paper') throw new PanelError('The Velocity proxy cannot be removed.')
+    if (this.configs.filter((server) => server.kind === 'paper').length <= 1) throw new PanelError('Keep at least one Paper backend.')
+    this.assertWritable(id)
+    const proxy = this.configs.find((server) => server.kind === 'velocity')!
+    this.assertWritable(proxy.id)
+    const next = this.configs.filter((server) => server.id !== id)
+    provisionNetwork(this.root, next)
+    saveConfig(this.root, next)
+    this.configs = next
+    this.manager.processes.delete(id)
+    delete this.metrics[id]
+    delete this.downloads[id]
+    this.usage.delete(id)
+    this.playerCounts.delete(id)
+    this.agentArgs.delete(id)
   }
 
   /** Strict gate: the server must be stopped and idle for restarts, settings, EULA, reinstalls, and backups. */
