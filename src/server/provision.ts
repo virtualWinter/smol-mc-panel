@@ -1,10 +1,27 @@
 import { randomBytes } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import type { ServerConfig } from './config'
 import { serverDirectory } from './paths'
 
 const writeNew = (path: string, content: string) => { if (!existsSync(path)) writeFileSync(path, content, { flag: 'wx', mode: 0o600 }) }
+
+/** Points the existing proxy bind at a new address without touching any other line. */
+export function rewriteProxyBind(root: string, proxy: ServerConfig) {
+  const directory = serverDirectory(root, proxy.workingDirectory)
+  const file = resolve(directory, proxy.kind === 'velocity' ? 'velocity.toml' : 'config.yml')
+  if (!existsSync(file)) return
+  const pattern = proxy.kind === 'velocity'
+    ? /^([ \t]*bind[ \t]*=[ \t]*)("[^"]*"|'[^']*'|[^"'\n]*)/m
+    : /(^|\n)([ \t]*-[ \t]*host[ \t]*:[ \t]*)("[^"]*"|'[^']*'|[^"'\n]*)/
+  const text = readFileSync(file, 'utf8')
+  const updated = text.replace(pattern, (_match, lead: string, prefix: string, value: string) => {
+    if (typeof value !== 'string') value = prefix
+    const quote = value.startsWith('"') || value.startsWith("'") ? value[0] : ''
+    return `${lead}${proxy.kind === 'velocity' ? '' : prefix}${quote}${proxy.address}${quote}`
+  })
+  if (updated !== text) { writeFileSync(`${file}.tmp`, updated, { mode: 0o600 }); renameSync(`${file}.tmp`, file) }
+}
 
 export function provisionNetwork(root: string, servers: ServerConfig[]) {
   const proxy = servers.find((server) => server.kind !== 'paper')!

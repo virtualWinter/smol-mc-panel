@@ -57,6 +57,8 @@ export interface AgentMetrics {
   javaVersion: string
   tps?: number[]
   mspt?: number
+  networkIn?: number
+  networkOut?: number
   onlinePlayers?: number
   maxPlayers?: number
   serverVersion?: string

@@ -71,6 +71,8 @@ export class TelemetryCollector {
       if (number(data.onlinePlayers, 1_000_000)) value.onlinePlayers = data.onlinePlayers
       if (number(data.maxPlayers, 1_000_000)) value.maxPlayers = data.maxPlayers
       if (number(data.mspt, 120_000)) value.mspt = data.mspt
+      if (number(data.networkIn, 1_000_000_000)) value.networkIn = data.networkIn
+      if (number(data.networkOut, 1_000_000_000)) value.networkOut = data.networkOut
       if (text(data.serverVersion, 512)) value.serverVersion = data.serverVersion
       if (Array.isArray(data.tps) && data.tps.length === 3 && data.tps.every((item) => number(item, 25))) value.tps = data.tps.map((item: number) => Math.min(20, item))
       if (Array.isArray(data.players)) value.players = data.players.slice(0, 200).filter((item) => item && text(item.name, 64) && text(item.uuid, 64) && number(item.ping, 1_000_000)).map((item) => ({ name: item.name, uuid: item.uuid, ping: item.ping }))

@@ -62,7 +62,13 @@ test('the telemetry socket authenticates agents for the right process and reject
     await frame(collector, { ...sample, heapUsed: 777, players: [{ name: '', uuid: '0000', ping: 12 }] })
     await check(777)
     assert.equal(collector.latest(config.id)!.players?.length, 0)
-    await frame(collector, { version: 1, serverId: config.id, token, pid: process.pid, heapUsed: 777, heapMax: 1073741824, heapCommitted: 524288000, uptime: 30000, threads: 42 })
+    // Proxy byte rates are accepted, and malformed rates are dropped.
+    await frame(collector, { ...sample, heapUsed: 777, networkIn: 51200, networkOut: 102400 })
+    await check(777)
+    assert.equal(collector.latest(config.id)!.networkOut, 102400)
+    await frame(collector, { ...sample, heapUsed: 777, networkIn: -1, networkOut: 2e9 })
+    await check(777)
+    assert.equal(collector.latest(config.id)!.networkOut, undefined)
     await check(777)
     assert.equal(collector.latest('intruder'), undefined)
     // Processes the panel is not running report no telemetry.

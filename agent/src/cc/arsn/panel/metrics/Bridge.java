@@ -17,6 +17,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.LockSupport;
 
 /** Bootstrap-visible bridge: no commands, plugin registration, or player output. */
@@ -29,6 +31,9 @@ public final class Bridge {
     private static long lastTickSample;
     private static String socket, token, serverId, kind;
     private static long previousCpu = -1, previousTime;
+    private static final Map<String, Method> readable = new ConcurrentHashMap<>();
+    private static final AtomicLong upstreamIn = new AtomicLong(), upstreamOut = new AtomicLong();
+    private static long lastIn, lastOut, lastAt;
 
     public static void configure(String file, Instrumentation api) throws Exception {
         Properties properties = new Properties();
@@ -46,6 +51,29 @@ public final class Bridge {
     }
 
     public static void bindProxy(Object value) { proxy = value; }
+
+    /** Counts every decoded inbound Minecraft frame in the proxy pipeline. */
+    public static void inboundFrames(List<?> frames) {
+        for (Object frame : frames) upstreamIn.addAndGet(bytes(frame));
+    }
+
+    /** Counts one outbound Minecraft frame from the proxy pipeline. */
+    public static void outboundFrame(Object frame) { upstreamOut.addAndGet(bytes(frame)); }
+
+    private static long bytes(Object frame) {
+        if (frame == null) return 0;
+        try {
+            String name = frame.getClass().getName();
+            Method readableBytes = readable.get(name);
+            if (readableBytes == null) {
+                readableBytes = frame.getClass().getMethod("readableBytes");
+                readable.put(name, readableBytes);
+            }
+            Object size = readableBytes.invoke(frame);
+            return size instanceof Number number ? number.longValue() : 0;
+        } catch (Throwable ignored) { /* Frames from unknown buffers stay unmeasured. */ }
+        return 0;
+    }
 
     /** Called after a Paper tick on its main thread. Bukkit world/player access stays here. */
     public static void tick() {
@@ -130,6 +158,15 @@ public final class Bridge {
             catch (Exception ignored) {
                 try { result.put("onlinePlayers", call(proxy, "getOnlineCount")); } catch (Exception ignoredAgain) { }
             }
+        }
+        if (!"paper".equals(kind)) {
+            // Proxy pipeline byte counters since the previous snapshot, reported as bytes/second.
+            long in = upstreamIn.get(), out = upstreamOut.get(), now = System.currentTimeMillis();
+            if (lastAt > 0 && now - lastAt >= 250) {
+                result.put("networkIn", Math.max(0L, (in - lastIn) * 1000 / (now - lastAt)));
+                result.put("networkOut", Math.max(0L, (out - lastOut) * 1000 / (now - lastAt)));
+            }
+            lastIn = in; lastOut = out; lastAt = now;
         }
         return result;
     }

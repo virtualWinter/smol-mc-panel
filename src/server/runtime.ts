@@ -271,7 +271,7 @@ export class NetworkRuntime {
         const process = this.manager.get(config.id)
         const history = this.metrics[config.id]
         const agent = this.telemetry.latest(config.id)
-        if (!process.child?.pid) { this.usage.delete(config.id); this.playerCounts.delete(config.id); appendMetric(history.cpu, 0); appendMetric(history.ram, 0); appendMetric(history.players, 0); return }
+        if (!process.child?.pid) { this.usage.delete(config.id); this.playerCounts.delete(config.id); appendMetric(history.cpu, 0); appendMetric(history.ram, 0); appendMetric(history.players, 0); if (history.network) appendMetric(history.network, 0); return }
         const usage = processUsage(process.child.pid)
         const previous = this.usage.get(config.id)
         if (usage) {
@@ -284,6 +284,7 @@ export class NetworkRuntime {
         const players = agent?.onlinePlayers !== undefined && agent.maxPlayers !== undefined ? { online: agent.onlinePlayers, max: agent.maxPlayers } : await queryPlayers(Number(config.address.split(':')[1]))
         if (players) { if (agent?.onlinePlayers !== undefined) players.online = agent.onlinePlayers; this.playerCounts.set(config.id, players); appendMetric(history.players, players.online) }
         if (config.kind === 'paper' && process.status === 'Online' && agent?.tps) appendMetric(history.tps, agent.tps[0])
+        if (config.kind !== 'paper' && history.network && agent?.networkIn !== undefined) appendMetric(history.network, agent.networkIn / 1024)
       }))
     } catch { /* A process can exit between metric reads. */ }
     finally { this.sampling = false }

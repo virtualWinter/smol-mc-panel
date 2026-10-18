@@ -2,13 +2,14 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from '
 import { resolve } from 'node:path'
 import type { Server, SetupServerInput } from '../types'
 import { PanelError } from './errors'
+import { rewriteProxyBind } from './provision'
 
 export type ServerConfig = Omit<Server, 'installed' | 'jarVersion' | 'download' | 'startupIssue' | 'telemetry' | 'eulaAccepted' | 'status' | 'memory' | 'players' | 'cpu' | 'logs' | 'logOffset'>
 export const javaVersions = ['Java 25', 'Java 21', 'Java 17']
 
 export function proxyConfig(kind: 'velocity' | 'bungeecord'): ServerConfig {
   return {
-    id: 'proxy', name: 'Proxy', kind, address: '127.0.0.1:25565', javaVersion: 'Java 21',
+    id: 'proxy', name: 'Proxy', kind, address: '0.0.0.0:25565', javaVersion: 'Java 21',
     jarFile: kind === 'velocity' ? 'velocity.jar' : 'bungeecord.jar',
     startupCommand: 'java -Xms{{MIN_MEMORY}}M -Xmx{{MAX_MEMORY}}M -jar {{JAR_FILE}}',
     minMemory: 256, maxMemory: 1024, workingDirectory: 'servers/proxy',
@@ -40,7 +41,8 @@ export function validateConfig(value: ServerConfig) {
   for (const field of ['name', 'address', 'jarFile', 'workingDirectory', 'startupCommand', 'stopCommand'] as const) {
     if (typeof value[field] !== 'string' || !value[field].trim() || value[field].length > 4096 || /[\r\n\0]/u.test(value[field])) throw new PanelError(`Invalid ${field}.`)
   }
-  if (!/^127\.0\.0\.1:\d+$/.test(value.address) || Number(value.address.split(':')[1]) < 1024 || Number(value.address.split(':')[1]) > 65535) throw new PanelError('Use a loopback address with a port from 1024 to 65535.')
+  const loopback = /^127\.0\.0\.1:\d+$/.test(value.address)
+  if (!(value.kind === 'paper' ? loopback : /^0\.0\.0\.0:\d+$/.test(value.address)) || Number(value.address.split(':')[1]) < 1024 || Number(value.address.split(':')[1]) > 65535) throw new PanelError(value.kind === 'paper' ? 'Use a loopback address with a port from 1024 to 65535.' : 'The proxy must bind every interface (0.0.0.0) with a port from 1024 to 65535.')
   validateRelativePath(value.jarFile)
   validateRelativePath(value.workingDirectory)
   if (!javaVersions.includes(value.javaVersion)) throw new PanelError('Unsupported Java version.')
@@ -52,6 +54,8 @@ export function validateNetwork(servers: ServerConfig[]) {
   if (!Array.isArray(servers) || !servers.length || servers.length > 100 || servers.filter((server) => server.kind !== 'paper').length !== 1) throw new PanelError('The network must contain exactly one proxy.')
   servers.forEach(validateConfig)
   for (const key of ['id', 'address', 'workingDirectory'] as const) if (new Set(servers.map((server) => server[key])).size !== servers.length) throw new PanelError(`Duplicate ${key}.`)
+  const proxy = servers.find((server) => server.kind !== 'paper')!
+  for (const server of servers) if (server.kind === 'paper' && server.address.split(':')[1] === proxy.address.split(':')[1]) throw new PanelError('Backend ports must differ from the proxy bind port.')
 }
 
 export function saveConfig(root: string, servers: ServerConfig[]) {
@@ -67,6 +71,17 @@ export function loadConfig(root: string): ServerConfig[] {
   if (!existsSync(path)) throw new PanelError('Complete the first-start setup before starting the network.')
   const data = JSON.parse(readFileSync(path, 'utf8')) as { version: number; servers: ServerConfig[] }
   if (data.version !== 1) throw new PanelError('Unsupported network configuration version.')
-  validateNetwork(data.servers)
-  return data.servers
+  // The proxy moved to a public bind; migrate loopback-era panel.json files on first load.
+  const servers = data.servers.map((server) => {
+    if (server.kind === 'paper' || /^0\.0\.0\.0:\d+$/.test(server.address)) return server
+    if (typeof server.address !== 'string' || !/^127\.0\.0\.1:\d+$/.test(server.address)) throw new PanelError(`Invalid proxy address for ${server.id}.`)
+    return { ...server, address: `0.0.0.0:${server.address.split(':')[1]}` }
+  })
+  validateNetwork(servers)
+  for (const server of servers) {
+    if (server.kind === 'paper' || data.servers.find((original) => original.id === server.id)?.address === server.address) continue
+    rewriteProxyBind(root, server)
+  }
+  if (JSON.stringify(data.servers) !== JSON.stringify(servers)) saveConfig(root, servers)
+  return servers
 }
