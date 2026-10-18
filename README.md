@@ -104,6 +104,7 @@ Operating notes:
             - address: "smol-mc-panel:25565"
   ```
   Publishing the entrypoint requires Traefik to be (re)created with `-p 25565:25565` (plain `docker restart` cannot add a port mapping). Players connect to the domain's port 25565 (e.g. `panel.example.com:25565`); Traefik forwards raw TCP to the proxy inside the container — no double publish of `25565:25565` in the panel's compose `ports`. Without this wiring (or on a plain Docker host), fall back to publishing the port directly as described above.
+- Player IPs behind Traefik: a TCP reverse proxy replaces the client socket, so the proxy would otherwise only see Traefik's address. Traefik sends HAProxy PROXY protocol v2 headers (`serversTransports`: `proxyProtocol: version: 2` on the TCP service) and Velocity learns each player's real IP when `velocity.toml` has `[advanced] haproxy-protocol = true`. Modern IP forwarding then carries that real IP into every Paper backend. Velocity 4.x ignores different PROXY-protocol key names — use exactly `haproxy-protocol`. Direct connections not carrying a PROXY header are then rejected by Velocity, so the entrypoint must only be reachable through whatever proxy ingress supports it. Restart the proxy after flipping the flag.
 - `x-forwarded-proto` must be `https` (default Dokploy behaviour) — connections to the declared host over plain HTTP fail validation now and forever (also enforced for server-function POSTs by the origin match).
 
 ## Access and configuration
