@@ -6,6 +6,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -13,51 +14,40 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-/**
- * The permission snapshot the panel writes next to this plugin.
+/** The permission snapshot the panel hosts and pushes to this server.
  *
- * The panel owns every rule (groups, weights, inheritance); this class only walks an
- * already priority-ordered node list and reloads the file when it changes. Everything
- * here is plain JDK so the same class compiles for Paper and Velocity.
- */
+ * The panel is authoritative: it sends the serialized snapshot over a Unix socket and the
+ * plugin applies it. The cache file (`plugins/smol-panel/permissions.txt`) is only a
+ * fallback for when the panel is unreachable at startup; it is refreshed whenever a
+ * snapshot arrives. */
 public final class Permissions {
 
-  /** Relative to the server working directory, which is also the plugin data folder. */
   public static final String FILE = "plugins/smol-panel/permissions.txt";
-
-  private static final String DEFAULT_KEY = "d";
   private static final long POLL_MS = 5000L;
 
   private final Path file = Paths.get(FILE);
   private volatile Map<String, List<Node>> subjects = Collections.emptyMap();
-  private volatile List<String> raw = Collections.emptyList();
+  private volatile String raw = "";
+  private volatile Runnable onChange;
   private Thread watcher;
 
-  /** One resolved node. `name` may be `*` or end in `.*`. */
   public static final class Node {
     public final String name;
     public final boolean value;
-
-    Node(String name, boolean value) {
-      this.name = name;
-      this.value = value;
-    }
+    Node(String name, boolean value) { this.name = name; this.value = value; }
   }
 
+  public Permissions() {}
+
+  /** Wires the callback invoked (on whatever thread) when the snapshot changes. */
+  public void onChange(Runnable callback) { this.onChange = callback; }
+
+  /** Starts the fallback file poller. The socket channel provides instant updates. */
   public void start() {
-    refresh(true);
     Thread thread = new Thread(() -> {
       while (!Thread.currentThread().isInterrupted()) {
-        try {
-          Thread.sleep(POLL_MS);
-        } catch (InterruptedException stopped) {
-          return;
-        }
-        try {
-          refresh(false);
-        } catch (RuntimeException ignored) {
-          // A partially written snapshot is retried on the next tick.
-        }
+        try { Thread.sleep(POLL_MS); } catch (InterruptedException stopped) { return; }
+        try { refresh(false); } catch (RuntimeException ignored) { /* retried next tick */ }
       }
     }, "smol-panel-permissions");
     thread.setDaemon(true);
@@ -65,27 +55,41 @@ public final class Permissions {
     this.watcher = thread;
   }
 
-  public void stop() {
-    Thread thread = this.watcher;
-    if (thread != null) thread.interrupt();
+  public void stop() { Thread thread = this.watcher; if (thread != null) thread.interrupt(); }
+
+  /** Rebuilds the snapshot from text. Returns true when it actually changed. */
+  public synchronized boolean update(String text) {
+    if (text == null) text = "";
+    if (text.equals(this.raw)) return false;
+    this.raw = text;
+    this.subjects = parse(text);
+    Runnable callback = this.onChange;
+    if (callback != null) callback.run();
+    return true;
   }
 
-  /** Reloads when the panel rewrites the file. Returns true when the snapshot changed.
-   *
-   * The file is tiny, so it is compared by content: that avoids depending on filesystem
-   * timestamp resolution when two edits land in the same second. */
+  /** Reads the cache file on startup. */
+  public synchronized boolean loadCache() { return refresh(true); }
+
+  /** Reads the cache file and rebuilds. Returns true when it changed. */
   public synchronized boolean refresh(boolean force) {
     try {
-      List<String> lines = Files.isRegularFile(this.file)
-          ? Files.readAllLines(this.file, StandardCharsets.UTF_8)
-          : Collections.<String>emptyList();
-      if (!force && lines.equals(this.raw)) return false;
-      this.raw = lines;
-      this.subjects = parse(lines);
-      return true;
-    } catch (IOException | RuntimeException error) {
-      return false;
-    }
+      String text = Files.isRegularFile(this.file) ? Files.readString(this.file, StandardCharsets.UTF_8) : "";
+      return update(text);
+    } catch (IOException | RuntimeException error) { return false; }
+  }
+
+  /** Writes a received snapshot to the cache file. */
+  public void cache(String text) {
+    try {
+      Files.createDirectories(this.file.getParent());
+      Files.writeString(this.file, text, StandardCharsets.UTF_8);
+    } catch (IOException ignored) { /* best effort */ }
+  }
+
+  static Map<String, List<Node>> parse(String text) {
+    List<String> lines = Arrays.asList(text.split("\\r?\\n", -1));
+    return parse(lines);
   }
 
   static Map<String, List<Node>> parse(List<String> lines) {
@@ -105,38 +109,27 @@ public final class Permissions {
         nodes.add(new Node(token.substring(0, split).toLowerCase(Locale.ROOT), token.charAt(split + 1) == '1'));
       }
       if (nodes.isEmpty()) continue;
-      parsed.put(user ? parts[1].toLowerCase(Locale.ROOT) : DEFAULT_KEY, Collections.unmodifiableList(nodes));
+      parsed.put(user ? parts[1].toLowerCase(Locale.ROOT) : "d", Collections.unmodifiableList(nodes));
     }
     return parsed;
   }
 
-  /** The ordered nodes for one subject, defaulting to the `d` line for unknown subjects. */
   public List<Node> nodes(String subject) {
     Map<String, List<Node>> snapshot = this.subjects;
     List<Node> found = subject == null ? null : snapshot.get(subject.toLowerCase(Locale.ROOT));
-    if (found == null) found = snapshot.get(DEFAULT_KEY);
+    if (found == null) found = snapshot.get("d");
     return found == null ? Collections.emptyList() : found;
   }
 
-  /** The resolved value for a node, or null when nothing matches (the server default applies). */
   public Boolean value(String subject, String permission) {
     if (permission == null) return null;
     String query = permission.toLowerCase(Locale.ROOT);
-    for (Node node : nodes(subject)) {
-      if (matches(node.name, query)) return node.value;
-    }
+    for (Node node : nodes(subject)) if (matches(node.name, query)) return node.value;
     return null;
   }
 
-  /** The full map of node values to hand to a permission attachment.
-   *
-   * Attachments answer by exact name, so wildcard entries are expanded against the node
-   * names a plugin registered; every subject node is included as well so unknown nodes
-   * still resolve wherever the platform honours them. */
   public Map<String, Boolean> attachable(String subject, Iterable<String> registered) {
     Map<String, Boolean> values = new LinkedHashMap<>();
-    // First match wins inside the ordered list, so an earlier (more authoritative) entry
-    // must never be replaced by a later duplicate.
     for (Node node : nodes(subject)) values.putIfAbsent(node.name, node.value);
     for (String name : registered) {
       if (name == null) continue;

@@ -52,6 +52,7 @@ public interface Server {
 package org.bukkit.scheduler;
 import org.bukkit.plugin.Plugin;
 public interface BukkitScheduler {
+  BukkitTask runTask(Plugin plugin, Runnable task);
   BukkitTask runTaskTimer(Plugin plugin, Runnable task, long delay, long period);
 }`,
   'org/bukkit/event/Listener.java': 'package org.bukkit.event; public interface Listener {}',
@@ -143,6 +144,7 @@ export function readPermissionSources(platform: 'paper' | 'velocity'): Permissio
   const sources: Record<string, string> = {}
   const base = 'cc/arsn/panel/permissions'
   sources[`${base}/Permissions.java`] = readFileSync(resolve(root, 'shared', base, 'Permissions.java'), 'utf8')
+  sources[`${base}/Channel.java`] = readFileSync(resolve(root, 'shared', base, 'Channel.java'), 'utf8')
   const entry = platform === 'paper' ? 'PaperPlugin' : 'VelocityPlugin'
   sources[`${base}/${entry}.java`] = readFileSync(resolve(root, platform, base, `${entry}.java`), 'utf8')
   for (const [path, source] of Object.entries(platform === 'paper' ? paperStubs : velocityStubs)) sources[path] = source

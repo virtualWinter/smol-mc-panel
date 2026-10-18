@@ -10,20 +10,18 @@ import com.velocitypowered.api.permission.Tristate;
 import com.velocitypowered.api.plugin.Plugin;
 import com.velocitypowered.api.proxy.Player;
 
-/**
- * Answers the proxy's permission checks from the panel's resolved nodes.
- *
- * Velocity asks for one node at a time, so the same ordered list the Paper side uses
- * answers directly — wildcards included. The console keeps its own defaults.
- */
 @Plugin(id = "smol-panel", name = "smol-panel", version = "1.0")
 public final class VelocityPlugin {
 
   private final Permissions permissions = new Permissions();
+  private final Channel channel = new Channel(permissions, () -> {});
 
   @Subscribe
   public void onInitialize(ProxyInitializeEvent event) {
+    this.permissions.loadCache();
+    this.permissions.onChange(() -> {});
     this.permissions.start();
+    this.channel.start();
   }
 
   @Subscribe

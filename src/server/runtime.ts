@@ -23,6 +23,7 @@ import { Backups } from './backups'
 import { Plugins, searchPlugins, pluginReleases } from './plugins'
 import { Players, validatePlayerAction, type PlayerAction } from './players'
 import { Permissions, type PermissionGroupInput, type PermissionUserInput } from './permissions'
+import { PermissionChannel } from './permission-channel'
 import { readJson, saveJson } from './json-store'
 import { reportedMinecraftVersion, reportedProxyVersion } from '../minecraft-version'
 
@@ -31,6 +32,7 @@ export class NetworkRuntime {
   private pluginService: Plugins
   private playerService: Players
   private permissionService: Permissions
+  private permissionChannel?: PermissionChannel
   private backupTimer: ReturnType<typeof setInterval>
   private closing = false
   private minecraftVersions: Record<string, string>
@@ -88,6 +90,10 @@ export class NetworkRuntime {
     this.pluginService = new Plugins(root)
     this.playerService = new Players(root)
     this.permissionService = new Permissions(root)
+    const manager = this.manager
+    const ch = new PermissionChannel(root, (id) => manager.get(id).child?.pid, this.permissionService)
+    this.permissionChannel = ch
+    void this.permissionChannel.start().catch((error) => { this.manager.log('proxy', `[Panel] Permission channel failed to start: ${error instanceof PanelError ? error.message : 'unknown error'}`) })
     if (this.permissionService.configured) for (const config of this.configs) this.permissionService.writeSnapshot(this.directory(config.id))
     this.backupService = new Backups(root, {
       ids: () => this.configs.map((s) => s.id), directory: (id) => this.directory(id), assertIdle: (id) => this.assertWritable(id), busy: this.backupJobs,
@@ -132,6 +138,7 @@ export class NetworkRuntime {
     this.metrics[backend.id] = emptyMetrics(false)
     this.playerService.apply(backend.id, this.directory(backend.id))
     if (this.permissionService.configured) this.permissionService.writeSnapshot(this.directory(backend.id))
+    if (this.permissionService.configured) { void this.ensurePermissionChannel(); this.permissionChannel?.configuration(backend, this.directory(backend.id)) }
   }
 
   removeServer(id: string) {
@@ -263,11 +270,18 @@ export class NetworkRuntime {
    *
    * Runs inside the same stop-the-server write gate as Java and the metrics agent, so the
    * plugin JAR the server loads on start is always the current build. */
+  private async ensurePermissionChannel() {
+    if (!this.permissionChannel) return
+    try { await this.permissionChannel.start() } catch (error) { this.manager.log('proxy', `[Panel] Permission channel failed to start: ${error instanceof PanelError ? error.message : 'unknown error'}`) }
+  }
+
   private async preparePermissions(config: ServerConfig) {
     if (!this.permissionService.configured) return
+    await this.ensurePermissionChannel()
     this.permissionService.writeSnapshot(this.directory(config.id))
     const java = this.javaExecutables.get(Number(config.javaVersion.split(' ')[1]))!
     await this.permissionService.install(config.kind, this.directory(config.id), java)
+this.permissionChannel?.configuration(config, this.directory(config.id))
   }
 
   private async prepareAgent(config: ServerConfig) {
@@ -432,6 +446,7 @@ export class NetworkRuntime {
   /** Writes the resolved snapshot into every server so live changes reach running games. */
   private refreshPermissions() {
     for (const config of this.configs) this.permissionService.writeSnapshot(this.directory(config.id))
+    this.permissionChannel?.broadcast()
   }
 
   savePermissionGroup(input: PermissionGroupInput) { this.permissionService.saveGroup(input); this.refreshPermissions() }
@@ -495,5 +510,5 @@ export class NetworkRuntime {
     }
   }
 
-  async shutdown() { this.closing = true; clearInterval(this.timer); clearInterval(this.backupTimer); try { await this.backupService.close(); await this.manager.shutdown(this.configs); await this.telemetry.close() } finally { this.releaseLock() } }
+  async shutdown() { this.closing = true; clearInterval(this.timer); clearInterval(this.backupTimer); try { await this.backupService.close(); await this.manager.shutdown(this.configs); await this.telemetry.close(); this.permissionChannel?.close() } finally { this.releaseLock() } }
 }

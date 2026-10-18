@@ -115,6 +115,9 @@ export class Permissions {
     return true
   }
 
+  /** Serialized snapshot, used by the socket channel. */
+  serialize() { return serializePermissions(this.store) }
+
   status(kind: 'velocity' | 'paper', directory: string): 'off' | 'installed' | 'pending' {
     if (!this.configured) return 'off'
     return this.installed(kind, directory) ? 'installed' : 'pending'
