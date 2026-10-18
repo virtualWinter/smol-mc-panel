@@ -155,9 +155,7 @@ public final class Bridge {
             if (latest != null && System.currentTimeMillis() - paperAt < 6000) result.putAll(latest);
         } else if (proxy != null) {
             try { result.put("onlinePlayers", call(proxy, "getPlayerCount")); }
-            catch (Exception ignored) {
-                try { result.put("onlinePlayers", call(proxy, "getOnlineCount")); } catch (Exception ignoredAgain) { }
-            }
+            catch (Exception ignored) { }
         }
         if (!"paper".equals(kind)) {
             // Proxy pipeline byte counters since the previous snapshot, reported as bytes/second.

@@ -71,75 +71,16 @@ test('PaperMC downloads require an identifying contact User-Agent', async () => 
   } finally { rmSync(root, { recursive: true, force: true }) }
 })
 
-const bungeeBase = 'https://hub.spigotmc.org/jenkins/job/BungeeCord'
-const bungeeJar = `${bungeeBase}/2104/artifact/bootstrap/target/BungeeCord.jar`
-
-function bungeeRequest(calls: string[], corrupt = false, fingerprint = true, recorded = false): typeof fetch {
-  return async (input, options) => {
-    const url = String(input)
-    calls.push(`${options?.method ?? 'GET'} ${url}`)
-    assert.equal(options?.redirect, 'error')
-    if (url.startsWith(`${bungeeBase}/lastSuccessfulBuild/api/json?`)) return Response.json({
-      number: 2104, result: 'SUCCESS', artifacts: [{ fileName: 'BungeeCord.jar', relativePath: 'bootstrap/target/BungeeCord.jar' }],
-      // Regression: the Maven fingerprint is NOT the archived/shaded JAR hash.
-      fingerprint: [{ fileName: 'net.md-5:BungeeCord.jar', hash: '0'.repeat(32) }],
-    })
-    if (url === `${bungeeJar}/*fingerprint*/`) {
-      const hash = createHash('md5').update(body).digest('hex')
-      return new Response(fingerprint ? (recorded ? `<div class="md5sum">MD5: ${hash}</div>` : `<h1>No matching record found</h1><p>The fingerprint ${hash} did not match any of the recorded data.</p>`) : '<html>No fingerprint available</html>', { headers: { 'Content-Type': 'text/html;charset=utf-8' } })
+test('download URLs outside PaperMC are rejected', async () => {
+  const root = mkdtempSync('/tmp/opencode/jar-unhosted-')
+  try {
+    const evil = 'https://example.com/velocity.jar'
+    const poisoned: typeof fetch = async (input) => {
+      const url = String(input)
+      if (url.endsWith('/projects/velocity')) return Response.json({ versions: { '1.21': ['1.21.11'] } })
+      if (url.endsWith('/builds')) return Response.json([{ id: 42, channel: 'STABLE', downloads: { 'server:default': { url: evil, size: body.length, checksums: { sha256: createHash('sha256').update(body).digest('hex') } } } }])
+      throw new Error(`unexpected request ${url}`)
     }
-    assert.equal(url, bungeeJar)
-    if (options?.method === 'HEAD') return new Response(null, { headers: { 'Content-Length': String(body.length) } })
-    const bytes = Uint8Array.from(body)
-    if (corrupt) bytes[bytes.length - 1] ^= 1
-    return new Response(bytes, { headers: { 'Content-Length': String(bytes.length) } })
-  }
-}
-
-test('BungeeCord downloads from official Jenkins and pins its build, MD5, and SHA-256', async () => {
-  const root = mkdtempSync('/tmp/opencode/bungee-install-')
-  try {
-    writeFileSync(resolve(root, 'bungeecord.jar'), 'old-jar')
-    writeFileSync(resolve(root, 'config.yml'), 'do-not-touch')
-    const calls: string[] = []
-    const options = { directory: root, jarFile: 'bungeecord.jar', project: 'bungeecord' as const, manifest: resolve(root, 'installations/proxy.json'), request: bungeeRequest(calls), userAgent }
-    const source = await reinstallJar(options)
-    assert.equal(source.build, 2104)
-    assert.equal(source.md5, createHash('md5').update(body).digest('hex'))
-    assert.equal(source.sha256, createHash('sha256').update(body).digest('hex'))
-    assert.deepEqual(readFileSync(resolve(root, 'bungeecord.jar')), body)
-    assert.equal(readFileSync(resolve(root, 'config.yml'), 'utf8'), 'do-not-touch')
-    calls.length = 0
-    await reinstallJar(options)
-    assert.deepEqual(calls, [`GET ${bungeeJar}`])
-  } finally { rmSync(root, { recursive: true, force: true }) }
-})
-
-test('BungeeCord fingerprint mismatches preserve the existing JAR', async () => {
-  const root = mkdtempSync('/tmp/opencode/bungee-corrupt-')
-  try {
-    writeFileSync(resolve(root, 'bungeecord.jar'), 'old-jar')
-    await assert.rejects(reinstallJar({ directory: root, jarFile: 'bungeecord.jar', project: 'bungeecord', manifest: resolve(root, 'installations/proxy.json'), request: bungeeRequest([], true), userAgent }), /verification failed/u)
-    assert.equal(readFileSync(resolve(root, 'bungeecord.jar'), 'utf8'), 'old-jar')
-    assert.deepEqual(readdirSync(root), ['bungeecord.jar'])
-  } finally { rmSync(root, { recursive: true, force: true }) }
-})
-
-test('BungeeCord refuses an unverified artifact when Jenkins has no fingerprint', async () => {
-  const root = mkdtempSync('/tmp/opencode/bungee-fingerprint-')
-  try {
-    const calls: string[] = []
-    await assert.rejects(reinstallJar({ directory: root, jarFile: 'bungeecord.jar', project: 'bungeecord', manifest: resolve(root, 'installations/proxy.json'), request: bungeeRequest(calls, false, false), userAgent }), /fingerprint/u)
-    assert.equal(calls.length, 3)
-    assert.equal(calls.includes(`GET ${bungeeJar}`), false)
-    assert.deepEqual(readdirSync(root), [])
-  } finally { rmSync(root, { recursive: true, force: true }) }
-})
-
-test('BungeeCord also supports Jenkins pages with a recorded archived fingerprint', async () => {
-  const root = mkdtempSync('/tmp/opencode/bungee-recorded-fingerprint-')
-  try {
-    const source = await reinstallJar({ directory: root, jarFile: 'bungeecord.jar', project: 'bungeecord', manifest: resolve(root, 'installations/proxy.json'), request: bungeeRequest([], false, true, true), userAgent })
-    assert.equal(source.md5, createHash('md5').update(body).digest('hex'))
+    await assert.rejects(reinstallJar({ directory: root, jarFile: 'velocity.jar', project: 'velocity', manifest: resolve(root, 'installations/proxy.json'), userAgent, request: poisoned }), /invalid JAR metadata/u)
   } finally { rmSync(root, { recursive: true, force: true }) }
 })

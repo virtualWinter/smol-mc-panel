@@ -7,19 +7,19 @@ import { rewriteProxyBind } from './provision'
 export type ServerConfig = Omit<Server, 'installed' | 'jarVersion' | 'download' | 'startupIssue' | 'telemetry' | 'eulaAccepted' | 'status' | 'memory' | 'players' | 'cpu' | 'logs' | 'logOffset'>
 export const javaVersions = ['Java 25', 'Java 21', 'Java 17']
 
-export function proxyConfig(kind: 'velocity' | 'bungeecord'): ServerConfig {
+export function proxyConfig(): ServerConfig {
   return {
-    id: 'proxy', name: 'Proxy', kind, address: '0.0.0.0:25565', javaVersion: 'Java 21',
-    jarFile: kind === 'velocity' ? 'velocity.jar' : 'bungeecord.jar',
+    id: 'proxy', name: 'Proxy', kind: 'velocity', address: '0.0.0.0:25565', javaVersion: 'Java 21',
+    jarFile: 'velocity.jar',
     startupCommand: 'java -Xms{{MIN_MEMORY}}M -Xmx{{MAX_MEMORY}}M -jar {{JAR_FILE}}',
     minMemory: 256, maxMemory: 1024, workingDirectory: 'servers/proxy',
-    stopCommand: kind === 'velocity' ? 'shutdown' : 'end', autoStart: true, restartOnCrash: true,
+    stopCommand: 'shutdown', autoStart: true, restartOnCrash: true,
   }
 }
 
-export function setupNetwork(kind: 'velocity' | 'bungeecord', backends: SetupServerInput[]): ServerConfig[] {
+export function setupNetwork(backends: SetupServerInput[]): ServerConfig[] {
   if (!Array.isArray(backends) || backends.length < 1 || backends.length > 20) throw new PanelError('Add between 1 and 20 Paper servers during setup.')
-  const servers: ServerConfig[] = [proxyConfig(kind), ...backends.map((input): ServerConfig => {
+  const servers: ServerConfig[] = [proxyConfig(), ...backends.map((input): ServerConfig => {
     if (!input || typeof input.id !== 'string' || typeof input.name !== 'string' || !input.name.trim() || input.name.length > 80 || !Number.isInteger(input.port) || !Number.isInteger(input.maxMemory)) throw new PanelError('Each server needs a valid ID, name, port, and memory limit.')
     return {
       id: input.id.trim(), name: input.name.trim(), kind: 'paper', address: `127.0.0.1:${input.port}`,
@@ -37,7 +37,7 @@ export function validateRelativePath(path: string, allowEmpty = false) {
 }
 
 export function validateConfig(value: ServerConfig) {
-  if (!value || !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(value.id) || !['velocity', 'bungeecord', 'paper'].includes(value.kind)) throw new PanelError('Invalid server configuration.')
+  if (!value || !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(value.id) || !['velocity', 'paper'].includes(value.kind)) throw new PanelError('Invalid server configuration.')
   for (const field of ['name', 'address', 'jarFile', 'workingDirectory', 'startupCommand', 'stopCommand'] as const) {
     if (typeof value[field] !== 'string' || !value[field].trim() || value[field].length > 4096 || /[\r\n\0]/u.test(value[field])) throw new PanelError(`Invalid ${field}.`)
   }
@@ -71,6 +71,7 @@ export function loadConfig(root: string): ServerConfig[] {
   if (!existsSync(path)) throw new PanelError('Complete the first-start setup before starting the network.')
   const data = JSON.parse(readFileSync(path, 'utf8')) as { version: number; servers: ServerConfig[] }
   if (data.version !== 1) throw new PanelError('Unsupported network configuration version.')
+  if (data.servers.some((server) => (server.kind as string) === 'bungeecord')) throw new PanelError('BungeeCord support was removed. Restore a backup or set up a Velocity network.')
   // The proxy moved to a public bind; migrate loopback-era panel.json files on first load.
   const servers = data.servers.map((server) => {
     if (server.kind === 'paper' || /^0\.0\.0\.0:\d+$/.test(server.address)) return server

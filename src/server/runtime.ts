@@ -246,7 +246,7 @@ export class NetworkRuntime {
   async reinstall(id: string) {
     const config = this.config(id)
     await this.withWrite(id, async () => {
-      this.manager.log(id, `[Panel] Downloading ${config.kind === 'velocity' ? 'Velocity' : config.kind === 'bungeecord' ? 'BungeeCord' : 'Paper'} JAR.`)
+      this.manager.log(id, `[Panel] Downloading ${config.kind === 'velocity' ? 'Velocity' : 'Paper'} JAR.`)
       try {
         const source = await reinstallJar({ directory: this.directory(id), jarFile: config.jarFile, project: config.kind, manifest: resolve(this.root, 'installations', `${id}.json`), onProgress: (progress) => { this.downloads[id] = progress } })
         const compatible = await this.compatibleJava(config)

@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSyn
 import { resolve } from 'node:path'
 import test from 'node:test'
 import { loadConfig, saveConfig, validateNetwork, validateRelativePath } from '../src/server/config'
+import { provisionNetwork } from '../src/server/provision'
 import { defaults } from './helpers'
 import { safePath } from '../src/server/paths'
 import { startupArgs } from '../src/server/startup'
@@ -35,7 +36,7 @@ test('the proxy always binds a public 0.0.0.0 address while backends stay loopba
   } finally { rmSync(root, { recursive: true, force: true }) }
 })
 
-test('legacy loopback proxies migrate to 0.0.0.0 across panel.json and server config files', () => {
+test('legacy loopback proxies migrate to 0.0.0.0 across panel.json and the velocity.toml bind line', () => {
   const root = mkdtempSync('/tmp/opencode/network-migrate-')
   try {
     const legacy = defaults().map((server) => server.kind === 'velocity' ? { ...server, address: '127.0.0.1:25565' } : server)
@@ -49,14 +50,36 @@ test('legacy loopback proxies migrate to 0.0.0.0 across panel.json and server co
     assert.equal(JSON.parse(readFileSync(resolve(root, 'panel.json'), 'utf8')).servers[0].address, '0.0.0.0:25565')
     const toml = readFileSync(resolve(root, 'servers/proxy/velocity.toml'), 'utf8')
     assert.ok(toml.includes('bind = "0.0.0.0:25565"') && toml.includes('motd = "keep me"'))
-    // BungeeCord listeners migrate the same way.
-    const bungee = resolve(root, 'servers/bungee')
-    mkdirSync(bungee, { recursive: true })
-    writeFileSync(resolve(bungee, 'config.yml'), 'listeners:\n  - host: "127.0.0.1:25577"\n    motd: "keep me"\n')
-    const bungeeBind = defaults().map((server) => server.kind === 'velocity' ? { ...server, id: 'bungee', kind: 'bungeecord', jarFile: 'bungeecord.jar', address: '127.0.0.1:25577', workingDirectory: 'servers/bungee', stopCommand: 'end' } : server)
-    writeFileSync(resolve(root, 'panel.json'), JSON.stringify({ version: 1, servers: bungeeBind }))
-    loadConfig(root)
-    assert.ok(readFileSync(resolve(bungee, 'config.yml'), 'utf8').includes('host: "0.0.0.0:25577"'))
+    // BungeeCord networks were removed and must abort with a clear message instead of half-loading.
+    writeFileSync(resolve(root, 'panel.json'), JSON.stringify({ version: 1, servers: legacy.map((server) => server.kind === 'velocity' ? { ...server, kind: 'bungeecord', jarFile: 'bungeecord.jar', stopCommand: 'end' } : server) }))
+    assert.throws(() => loadConfig(root), /BungeeCord support was removed/u)
+  } finally { rmSync(root, { recursive: true, force: true }) }
+})
+
+test('the proxy backend list is reconciled from panel.json on every boot', () => {
+  const root = mkdtempSync('/tmp/opencode/network-sync-')
+  try {
+    provisionNetwork(root, defaults())
+    const toml = () => readFileSync(resolve(root, 'servers/proxy/velocity.toml'), 'utf8')
+    assert.ok(toml().includes('survival = "127.0.0.1:25566"') && toml().includes('try = ["survival"]'))
+    // An unchanged topology rewrites nothing.
+    const before = toml()
+    provisionNetwork(root, defaults())
+    assert.equal(toml(), before)
+    // A user force-host for a kept backend survives; entries for dropped backends go.
+    writeFileSync(resolve(root, 'servers/proxy/velocity.toml'), toml().replace('[forced-hosts]', '[forced-hosts]\n"game.example.com" = ["survival"]\n"old.example.com" = ["ghost"]\n'))
+    const expanded = [...defaults(), { ...defaults()[1], id: 'events', name: 'Events', address: '127.0.0.1:25568', workingDirectory: 'servers/events' }]
+    provisionNetwork(root, expanded)
+    let updated = toml()
+    assert.ok(updated.includes('events = "127.0.0.1:25568"'))
+    assert.ok(updated.includes('creative = "127.0.0.1:25567"'))
+    assert.ok(updated.includes('"game.example.com" = [ "survival" ]') && !updated.includes('old.example.com'))
+    assert.ok(updated.includes('try = [ "survival" ]'))
+    // Backends removed from panel.json disappear from the proxy on the next boot.
+    provisionNetwork(root, defaults())
+    updated = toml()
+    assert.ok(!updated.includes('events'))
+    assert.ok(updated.includes('"game.example.com" = [ "survival" ]'))
   } finally { rmSync(root, { recursive: true, force: true }) }
 })
 

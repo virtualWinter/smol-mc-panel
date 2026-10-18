@@ -11,7 +11,7 @@ import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 
-/** Internal panel instrumentation, not a Bukkit/Velocity/Bungee plugin. */
+/** Internal panel instrumentation, not a Bukkit or Velocity plugin. */
 public final class Agent {
     private static JarFile bootstrap;
 
@@ -29,13 +29,10 @@ public final class Agent {
         public byte[] transform(ClassLoader loader, String name, Class<?> redefined,
                                 ProtectionDomain domain, byte[] bytes) {
             boolean paper = "net/minecraft/server/MinecraftServer".equals(name);
-            boolean proxy = "com/velocitypowered/proxy/VelocityServer".equals(name)
-                    || "net/md_5/bungee/BungeeCord".equals(name);
-            boolean framesIn = "com/velocitypowered/proxy/protocol/netty/MinecraftVarintFrameDecoder".equals(name)
-                    || "net/md_5/bungee/netty/Varint21FrameDecoder".equals(name);
+            boolean proxy = "com/velocitypowered/proxy/VelocityServer".equals(name);
+            boolean framesIn = "com/velocitypowered/proxy/protocol/netty/MinecraftVarintFrameDecoder".equals(name);
             boolean framesOut = "com/velocitypowered/proxy/protocol/netty/MinecraftVarintLengthEncoder".equals(name)
-                    || "com/velocitypowered/proxy/protocol/netty/MinecraftCompressorAndLengthEncoder".equals(name)
-                    || "net/md_5/bungee/netty/PacketEncoder".equals(name);
+                    || "com/velocitypowered/proxy/protocol/netty/MinecraftCompressorAndLengthEncoder".equals(name);
             if (!paper && !proxy && !framesIn && !framesOut) return null;
             try {
                 ClassReader reader = new ClassReader(bytes);

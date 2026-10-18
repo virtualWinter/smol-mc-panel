@@ -36,20 +36,19 @@ test('new network generates secure forwarding, requires JARs and EULA, and creat
   } finally { await runtime.shutdown(); rmSync(root, { recursive: true, force: true }) }
 })
 
-test('explicit BungeeCord configuration provisions a proxy without inventing backend servers', async () => {
-  const root = mkdtempSync('/tmp/opencode/bungeecord-runtime-')
-  saveConfig(root, [proxyConfig('bungeecord')])
+test('a proxy without backends keeps its empty [servers] table and reports an issue instead of starting', async () => {
+  const root = mkdtempSync('/tmp/opencode/empty-network-runtime-')
+  saveConfig(root, [proxyConfig()])
   const runtime = new NetworkRuntime(root, false)
   try {
     const state = runtime.snapshot('http://localhost/proxy/files')
     assert.equal(state.servers.length, 1)
-    assert.equal(state.servers[0].kind, 'bungeecord')
+    assert.equal(state.servers[0].kind, 'velocity')
     assert.equal(state.servers[0].eulaAccepted, true)
     assert.equal(existsSync(resolve(root, 'servers/survival')), false)
-    assert.equal(existsSync(resolve(root, 'forwarding.secret')), false)
-    assert.ok(readFileSync(resolve(root, 'servers/proxy/config.yml'), 'utf8').includes('servers: {}'))
+    assert.ok(readFileSync(resolve(root, 'servers/proxy/velocity.toml'), 'utf8').includes('try = []'))
     assert.match(state.servers[0].startupIssue!, /at least one backend/u)
-    writeFileSync(resolve(root, 'servers/proxy/bungeecord.jar'), 'not executed')
+    writeFileSync(resolve(root, 'servers/proxy/velocity.jar'), 'not executed')
     await assert.rejects(runtime.power('proxy', 'Start'), /at least one backend/u)
   } finally { await runtime.shutdown(); rmSync(root, { recursive: true, force: true }) }
 })

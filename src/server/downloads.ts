@@ -7,9 +7,8 @@ import { MAX_UPLOAD } from './files'
 import type { DownloadProgressState } from '../types'
 
 const api = 'https://fill.papermc.io/v3/projects'
-const bungeeApi = 'https://hub.spigotmc.org/jenkins/job/BungeeCord'
 interface JarSource {
-  project: 'paper' | 'velocity' | 'bungeecord'
+  project: 'paper' | 'velocity'
   version: string
   build: number
   jarFile: string
@@ -21,10 +20,9 @@ interface JarSource {
 
 function validateSource(value: JarSource): JarSource {
   const url = new URL(value.url)
-  const bungee = value.project === 'bungeecord'
-  const validChecksum = bungee ? ((typeof value.sha256 === 'string' && /^[a-f0-9]{64}$/u.test(value.sha256)) || (typeof value.md5 === 'string' && /^[a-f0-9]{32}$/u.test(value.md5))) : typeof value.sha256 === 'string' && /^[a-f0-9]{64}$/u.test(value.sha256)
-  const validUrl = bungee ? value.url === `${bungeeApi}/${value.build}/artifact/bootstrap/target/BungeeCord.jar` : url.hostname === 'fill-data.papermc.io'
-  if (!['paper', 'velocity', 'bungeecord'].includes(value.project) || typeof value.version !== 'string' || !Number.isInteger(value.build) || value.build < 1 || !validChecksum || (value.sha256 !== undefined && !/^[a-f0-9]{64}$/u.test(value.sha256)) || (value.md5 !== undefined && !/^[a-f0-9]{32}$/u.test(value.md5)) || !Number.isInteger(value.size) || value.size < 4 || value.size > MAX_UPLOAD || !validUrl || url.protocol !== 'https:' || url.port || url.username || url.password) throw new PanelError('The download service returned invalid JAR metadata.')
+  const validChecksum = typeof value.sha256 === 'string' && /^[a-f0-9]{64}$/u.test(value.sha256)
+  const validUrl = url.hostname === 'fill-data.papermc.io'
+  if (!['paper', 'velocity'].includes(value.project) || typeof value.version !== 'string' || !Number.isInteger(value.build) || value.build < 1 || !validChecksum || (value.md5 !== undefined && !/^[a-f0-9]{32}$/u.test(value.md5)) || !Number.isInteger(value.size) || value.size < 4 || value.size > MAX_UPLOAD || !validUrl || url.protocol !== 'https:' || url.port || url.username || url.password) throw new PanelError('The download service returned invalid JAR metadata.')
   return value
 }
 
@@ -50,25 +48,6 @@ async function readMetadata(response: Response, limit = 8 * 1024 * 1024): Promis
 
 async function latestSource(project: JarSource['project'], jarFile: string, request: typeof fetch, userAgent: string): Promise<JarSource> {
   const get = (url: string) => request(url, { headers: { 'User-Agent': userAgent }, redirect: 'error', signal: AbortSignal.timeout(15_000) }).then(readMetadata).then((text) => JSON.parse(text) as unknown)
-  if (project === 'bungeecord') {
-    const data = await get(`${bungeeApi}/lastSuccessfulBuild/api/json?tree=number,result,artifacts[fileName,relativePath]`) as {
-      number: number; result: string; artifacts?: { fileName: string; relativePath: string }[]
-    }
-    if (data.result !== 'SUCCESS' || !Number.isInteger(data.number) || data.number < 1 || !Array.isArray(data.artifacts) || !data.artifacts.some((artifact) => artifact.fileName === 'BungeeCord.jar' && artifact.relativePath === 'bootstrap/target/BungeeCord.jar')) throw new PanelError('No successful BungeeCord JAR build was found.')
-    const url = `${bungeeApi}/${data.number}/artifact/bootstrap/target/BungeeCord.jar`
-    const [head, fingerprint] = await Promise.all([
-      request(url, { method: 'HEAD', headers: { 'User-Agent': userAgent }, redirect: 'error', signal: AbortSignal.timeout(15_000) }),
-      request(`${url}/*fingerprint*/`, { headers: { 'User-Agent': userAgent }, redirect: 'error', signal: AbortSignal.timeout(30_000) }),
-    ])
-    if (!head.ok) throw new PanelError(`Could not inspect the BungeeCord JAR (${head.status}).`)
-    // Maven's build fingerprint can describe a pre-shaded JAR. This endpoint
-    // computes the hash of the actual archived artifact instead.
-    if (!fingerprint.headers.get('content-type')?.includes('text/html')) throw new PanelError('BungeeCord did not publish a readable archived artifact fingerprint.')
-    const page = (await readMetadata(fingerprint, 1024 * 1024)).replace(/<[^>]*>/gu, ' ')
-    const md5 = page.match(/\bMD5:\s*([a-f0-9]{32})\b/iu)?.[1] ?? page.match(/\bThe fingerprint\s+([a-f0-9]{32})\b/iu)?.[1]
-    if (!md5) throw new PanelError('BungeeCord did not publish an archived artifact fingerprint; the existing JAR was not changed.')
-    return validateSource({ project, jarFile, version: 'BungeeCord', build: data.number, url, md5: md5.toLowerCase(), size: Number(head.headers.get('content-length')) })
-  }
   const data = await get(`${api}/${project}`) as { versions?: Record<string, string[]> }
   if (!data.versions || typeof data.versions !== 'object') throw new PanelError('PaperMC returned an invalid version list.')
   const versions = Object.values(data.versions).flat().filter((version): version is string => typeof version === 'string' && /^[\d.]+(?:-SNAPSHOT)?$/u.test(version))
@@ -129,7 +108,7 @@ export async function reinstallJar({ directory, jarFile, project, manifest, user
     const sha256 = hash.digest('hex')
     if (size !== source.size || (source.sha256 && sha256 !== source.sha256) || (source.md5 && md5!.digest('hex') !== source.md5)) throw new PanelError('JAR verification failed. The existing JAR was not changed.')
     // Jenkins publishes an MD5 fingerprint, not SHA-256. Pin our verified bytes with
-    // SHA-256 too, so future BungeeCord reinstalls check both fingerprints.
+    // SHA-256 too, so reinstalls check the primary fingerprint.
     source.sha256 = sha256
     mkdirSync(dirname(manifest), { recursive: true, mode: 0o700 })
     writeFileSync(`${manifest}.tmp`, JSON.stringify(source, null, 2), { mode: 0o600 })

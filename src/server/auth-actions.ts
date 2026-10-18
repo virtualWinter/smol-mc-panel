@@ -12,20 +12,19 @@ import type { SetupServerInput } from '../types'
 
 const failures: number[] = []
 
-export async function setupPanel(username: string, password: string, kind: 'velocity' | 'bungeecord', backends: SetupServerInput[] = []) {
+export async function setupPanel(username: string, password: string, backends: SetupServerInput[] = []) {
   const context = requestContext()
   if (readAccount(context.root)) throw new PanelError('Setup is already complete. Sign in instead.')
   validateCredentials(username, password)
-  if (!['velocity', 'bungeecord'].includes(kind)) throw new PanelError('Choose Velocity or BungeeCord.')
   const release = acquireLock(context.root)
   try {
     if (existsSync(resolve(context.root, 'panel.json'))) {
       if (!Array.isArray(backends) || backends.length) throw new PanelError('An existing network is being preserved. Server changes are not part of account-only setup.')
       const servers = loadConfig(context.root)
-      if (servers.find((server) => server.kind !== 'paper')?.kind !== kind) throw new PanelError('The existing network uses a different proxy type. Existing server data will not be overwritten.')
+      if (servers.find((server) => server.kind !== 'paper')?.kind !== 'velocity') throw new PanelError('The existing network uses an unsupported proxy type. Existing server data will not be overwritten.')
     } else {
       // This is the only initial server creation path: explicit admin setup.
-      const servers = setupNetwork(kind, backends)
+      const servers = setupNetwork(backends)
       saveConfig(context.root, servers)
       provisionNetwork(context.root, servers)
     }

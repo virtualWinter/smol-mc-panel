@@ -1,5 +1,5 @@
 export interface Server {
-  kind: 'velocity' | 'bungeecord' | 'paper'
+  kind: 'velocity' | 'paper'
   installed: boolean
   jarVersion?: string
   download?: DownloadProgressState
