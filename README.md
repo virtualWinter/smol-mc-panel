@@ -71,6 +71,8 @@ Open `http://127.0.0.1:5173/` (host port mapped by compose) and complete first-s
 
 ## Backups, plugins, and players
 
+The Files editor provides theme-aware syntax highlighting for YAML, TOML, JSON, Java properties/INI, environment files, and shell scripts. It includes line numbers, folding, bracket matching, undo/redo, and Ctrl/Cmd+F search. Tab moves keyboard focus; standard editor indentation shortcuts remain available. The editor loads on demand and keeps the existing 512 KiB text-edit limit.
+
 The plugin catalog fills Minecraft version automatically from the Java agent, and caches the last detected version for stopped servers. Live detection is authoritative; offline servers allow a manual version override for upgrades. A server that has never run can use manual input until its first telemetry report.
 
 Opening Plugins automatically browses popular projects (by downloads) from the selected catalog, filtered for Paper or Velocity. Switch catalogs to browse its list, enter a query to search, or submit an empty search to return to popular plugins. Browsing never installs anything automatically; release compatibility is checked when choosing a version.
