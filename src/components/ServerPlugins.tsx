@@ -6,7 +6,7 @@ import { reportedMinecraftVersion, reportedProxyVersion } from '../minecraft-ver
 
 export default function ServerPlugins({ server }: ServerProps) {
   const { plugins, searchPlugins, pluginVersions, installPlugin, removePlugin } = usePanel()
-  const [source, setSource] = useState<PluginProject['source']>('modrinth')
+  const [source, setSource] = useState<PluginProject['source']>('hangar')
   const [query, setQuery] = useState('')
   const proxy = server.kind === 'velocity'
   const needsVersion = !proxy || source === 'hangar'
@@ -46,7 +46,7 @@ export default function ServerPlugins({ server }: ServerProps) {
     <Stack component="form" direction={{ xs: 'column', sm: 'row' }} spacing={1} onSubmit={(event) => {
       event.preventDefault(); setCatalogPending(true); setCatalogError(''); setError(''); setResults([]); setProject(undefined); setBrowse({ query: query.trim() })
     }}>
-      <TextField select label="Catalog" value={source} disabled={busy} onChange={(e) => { setSource(e.target.value as PluginProject['source']); setResults([]); setProject(undefined); setCatalogPending(true); setCatalogError(''); setBrowse({ query: query.trim() }) }} sx={{ minWidth: 140 }}><MenuItem value="modrinth">Modrinth</MenuItem><MenuItem value="hangar">Hangar</MenuItem></TextField>
+      <TextField select label="Catalog" value={source} disabled={busy} onChange={(e) => { setSource(e.target.value as PluginProject['source']); setResults([]); setProject(undefined); setCatalogPending(true); setCatalogError(''); setBrowse({ query: query.trim() }) }} sx={{ minWidth: 140 }}><MenuItem value="hangar">Hangar</MenuItem><MenuItem value="modrinth">Modrinth</MenuItem></TextField>
       {needsVersion && <TextField label={proxy ? 'Velocity version' : 'Minecraft version'} value={game} disabled={busy || Boolean(liveVersion)} onChange={(e) => setManualGame(e.target.value)} placeholder={proxy ? '3.4.0' : '1.21.11'} helperText={liveVersion ? 'Detected by agent' : cachedVersion && manualGame === undefined ? 'Last detected; start server to refresh' : 'Start server to detect automatically'} />}
       <TextField label="Search plugins" value={query} disabled={busy} onChange={(e) => setQuery(e.target.value)} />
       <Button type="submit" disabled={busy}>{query.trim() ? 'Search' : 'Popular'}</Button>
