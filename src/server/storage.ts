@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { PanelError } from './errors'
+import { processAlive, registration } from './liveness'
 import { safePath } from './paths'
 
 function assertStopped(root: string) {
@@ -8,13 +9,13 @@ function assertStopped(root: string) {
   for (const name of pidFiles) {
     const path = resolve(root, name)
     if (!existsSync(path)) continue
-    const data = JSON.parse(readFileSync(path, 'utf8')) as Record<string, number>
-    const pids = name === '.panel.lock' ? [data.pid] : Object.values(data)
-    for (const pid of pids) {
-      if (!Number.isInteger(pid) || pid < 1) throw new PanelError('Invalid process registry. Inspect it before migrating data.')
-      let alive = true
-      try { process.kill(pid, 0) } catch (error) { if (error instanceof Error && 'code' in error && error.code === 'ESRCH') alive = false }
-      if (alive) throw new PanelError('Stop the panel and managed servers before migrating their data directory.')
+    let data: unknown
+    try { data = JSON.parse(readFileSync(path, 'utf8')) } catch { throw new PanelError('Invalid process registry. Inspect it before migrating data.') }
+    const values = name === '.panel.lock' ? [data] : Object.values(data as Record<string, unknown>)
+    for (const value of values) {
+      const entry = registration(value)
+      if (!entry) throw new PanelError('Invalid process registry. Inspect it before migrating data.')
+      if (processAlive(entry.pid, entry.start)) throw new PanelError('Stop the panel and managed servers before migrating their data directory.')
     }
   }
 }

@@ -17,6 +17,7 @@ import { installedSource, reinstallJar } from './downloads'
 import { installJava, managedJava } from './java'
 import { proxyStartupIssue } from './proxy-config'
 import { requiredJava } from './jar-java'
+import { processAlive, processStart, registration } from './liveness'
 import { buildAgent } from './agent-build'
 import { readAgentSources } from './agent-sources'
 import { TelemetryCollector } from './telemetry'
@@ -49,12 +50,11 @@ export class NetworkRuntime {
     try {
     const pidFile = resolve(root, 'processes.json')
     if (existsSync(pidFile)) {
-      const pids = JSON.parse(readFileSync(pidFile, 'utf8')) as Record<string, number>
-      for (const [id, pid] of Object.entries(pids)) {
-        if (!Number.isInteger(pid) || pid < 1) throw new PanelError('Invalid process registry. Inspect processes.json before starting.')
-        let alive = true
-        try { process.kill(pid, 0) } catch (error) { if (error instanceof Error && 'code' in error && error.code === 'ESRCH') alive = false }
-        if (alive) throw new PanelError(`Process ${pid} (${id}) survived a previous panel shutdown. Stop or verify it before removing its entry from processes.json.`)
+      const data = JSON.parse(readFileSync(pidFile, 'utf8')) as Record<string, unknown>
+      for (const [id, value] of Object.entries(data)) {
+        const entry = registration(value)
+        if (!entry) throw new PanelError('Invalid process registry. Inspect processes.json before starting.')
+        if (processAlive(entry.pid, entry.start)) throw new PanelError(`Process ${entry.pid} (${id}) survived a previous panel shutdown. Stop or verify it before removing its entry from processes.json.`)
       }
     }
     this.configs = loadConfig(root)
@@ -62,7 +62,13 @@ export class NetworkRuntime {
     provisionNetwork(root, this.configs)
     try { this.ticksPerSecond = Number(execFileSync('getconf', ['CLK_TCK'], { encoding: 'utf8', timeout: 1000 })) || 100 } catch { /* Linux normally uses 100 clock ticks. */ }
     this.manager = new ProcessManager({ directory: (config) => this.directory(config.id), beforeStart: (config) => this.checkStart(config), executable: (config) => this.javaExecutables.get(Number(config.javaVersion.split(' ')[1]))!, extraJvmArgs: (config) => this.agentArgs.get(config.id) ?? [], onProcessChange: () => {
-      const pids = Object.fromEntries([...this.manager.processes].filter(([, item]) => item.child?.pid).map(([id, item]) => [id, item.child!.pid]))
+      const pids: Record<string, { pid: number; start: number }> = {}
+      for (const [id, item] of this.manager.processes) {
+        if (!item.child?.pid) continue
+        const start = processStart(item.child.pid)
+        if (start === undefined) continue
+        pids[id] = { pid: item.child.pid, start }
+      }
       writeFileSync(`${pidFile}.tmp`, JSON.stringify(pids), { mode: 0o600 })
       renameSync(`${pidFile}.tmp`, pidFile)
     } })
