@@ -6,8 +6,10 @@ services:
     restart: unless-stopped
     ports:
       - "5173:5173"
-      # Publish the proxy only after switching its bind from 127.0.0.1 to 0.0.0.0
-      # in data/servers/proxy/velocity.toml (or config.yml for BungeeCord).
+      # Minecraft goes through Traefik's TCP routing on Dokploy (a `minecraft`
+      # entrypoint on :25565 plus a file-provider router forwarding raw TCP to
+      # "smol-mc-panel:25565" — see README). On a plain Docker host without a
+      # reverse proxy, uncomment the mapping below instead.
       # - "25565:25565"
     volumes:
       - panel-data:/data

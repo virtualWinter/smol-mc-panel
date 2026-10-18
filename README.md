@@ -63,7 +63,7 @@ Open `http://127.0.0.1:5173/` (host port mapped by compose) and complete first-s
 
 - Panel web access is published on 5173. Behind a reverse proxy that rewrites the Host header, set `PANEL_ORIGIN` to the exact external origin, or Server Function origin validation fails.
 - With `PANEL_ORIGIN` set to an HTTPS origin, first-start setup is also acceptable through that proxy: requests must arrive with the declared Host and `x-forwarded-proto: https`. Complete setup immediately after the first deployment — before the account exists, whoever loads the panel first can create the admin. Without a declared origin, setup stays loopback-only.
-- Exposing Minecraft: the proxy's managed listener binds `0.0.0.0:25565` (encoded in `panel.json`), so publishing game traffic is a compose `ports` mapping. Since Docker cannot forward to a loopback listener, do not change the proxy bind back to loopback; if `network_mode: host` is preferred, remove the port mapping instead. Backend Paper servers must stay loopback-only.
+- Exposing Minecraft: the proxy's managed listener binds `0.0.0.0:25565` (encoded in `panel.json`), so publishing game traffic is a compose `ports` mapping. Since Docker cannot forward to a loopback listener, do not change the proxy bind back to loopback; if `network_mode: host` is preferred, remove the port mapping instead. Backend Paper servers must stay loopback-only. Behind an existing Traefik, routing the game traffic through it is also supported: give Traefik a `minecraft` TCP entrypoint on `:25565` and a file-provider router that forwards to the panel container's port 25565 (see the Dokploy section below for the exact configuration).
 - The metrics agent compiles on first server start from `agent/` sources shipped in the image, using the JDK the panel installed under `/data/java/`.
 - The container needs enough RAM for the panel plus every configured server's `maxMemory` at once; sized images should match the network currently hosted.
 - Restore-from-volume backups are unaffected by upgrades; update the image with `docker compose pull && docker compose up -d --build`. RSC/dataset formats and `data/` layout migrations run automatically on first start as described below.
@@ -83,7 +83,27 @@ Operating notes:
 
 - Keep the container as-is: Traefik reaches it over Dokploy's internal network, and the binding inside the container is `0.0.0.0:5173` for the web panel plus loopback-only Minecraft listeners.
 - Panel access goes through Traefik. The `5173:5173` mapping in the compose file is optional on a Dokploy server; keeping it publishes the panel on the host IP over plain HTTP, which breaks the Secure session cookie sent under `PANEL_ORIGIN` — remove the mapping unless you tunnel through SSH (`ssh -L 5173:127.0.0.1:5173 <host>`).
-- To expose Minecraft (TCP), publish the port directly rather than through Traefik: add `- "25565:25565"` to compose `ports` in Dokploy's editor (the proxy already binds `0.0.0.0:25565`). Players connect directly to the host IP.
+- To expose Minecraft, the game traffic goes through Traefik's TCP routing: a `minecraft` entrypoint on `:25565` in Traefik's static config (`/etc/dokploy/traefik/traefik.yml`, add under `entryPoints:`):
+  ```yaml
+    minecraft:
+      address: :25565
+  ```
+  plus a watched file-provider router (`/etc/dokploy/traefik/dynamic/minecraft.yml`):
+  ```yaml
+  tcp:
+    routers:
+      minecraft:
+        entryPoints:
+          - minecraft
+        rule: HostSNI(`*`)
+        service: minecraft-proxy
+    services:
+      minecraft-proxy:
+        loadBalancer:
+          servers:
+            - address: "smol-mc-panel:25565"
+  ```
+  Publishing the entrypoint requires Traefik to be (re)created with `-p 25565:25565` (plain `docker restart` cannot add a port mapping). Players connect to the domain's port 25565 (e.g. `panel.example.com:25565`); Traefik forwards raw TCP to the proxy inside the container — no double publish of `25565:25565` in the panel's compose `ports`. Without this wiring (or on a plain Docker host), fall back to publishing the port directly as described above.
 - `x-forwarded-proto` must be `https` (default Dokploy behaviour) — connections to the declared host over plain HTTP fail validation now and forever (also enforced for server-function POSTs by the origin match).
 
 ## Access and configuration
