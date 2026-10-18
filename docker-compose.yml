@@ -13,12 +13,10 @@ services:
       - panel-data:/data
     stop_grace_period: 90s
     environment:
-      # Required when the panel is reached through a reverse proxy that changes
-      # the Host header; server actions are validated against this exact origin.
-      # PANEL_ORIGIN: https://panel.example.com
-      # Optional hardening/behaviour overrides:
-      # PAPERMC_USER_AGENT: smol-mc-panel/0.0.0 (https://arsn.cc; admin@arsn.cc)
       PANEL_DATA_DIR: /data
+      # Dokploy (and docker compose) interpolates these from the deployment's .env.
+      PANEL_ORIGIN: ${PANEL_ORIGIN:-}
+      PAPERMC_USER_AGENT: ${PAPERMC_USER_AGENT:-}
 
 volumes:
   panel-data:
