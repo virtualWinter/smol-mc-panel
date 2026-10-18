@@ -7,7 +7,7 @@ import { listDirectory } from './files'
 import { appendMetric, emptyMetrics, processUsage, queryPlayers } from './metrics'
 import { safePath, serverDirectory } from './paths'
 import { ProcessManager } from './process-manager'
-import { provisionNetwork } from './provision'
+import { disablePaperWhitelist, provisionNetwork } from './provision'
 import { startupArgs } from './startup'
 import type { DownloadProgressState, MetricHistory, PanelState, Server, SetupServerInput, PluginProject } from '../types'
 import { acquireLock } from './lock'
@@ -163,7 +163,11 @@ export class NetworkRuntime {
     this.config(id)
     if (this.backupJobs.has(id) || this.writeJobs.has(id)) throw new PanelError('Wait for other file operations or backups to finish first.')
     this.writeJobs.add(id)
-    try { return await operation() } finally { this.writeJobs.delete(id) }
+    try { return await operation() } finally {
+      try {
+        if (this.config(id).kind === 'paper' && disablePaperWhitelist(this.directory(id)) && this.manager.get(id).child) this.manager.command(id, 'minecraft:whitelist off')
+      } finally { this.writeJobs.delete(id) }
+    }
   }
 
   directory(id: string) { return serverDirectory(this.root, this.config(id).workingDirectory) }
@@ -369,7 +373,10 @@ export class NetworkRuntime {
 
   async createBackup(id: string) { await this.backupService.create(id) }
   async deleteBackup(id: string, backupId: string) { await this.backupService.delete(id, backupId) }
-  async restoreBackup(id: string, backupId: string) { await this.backupService.restore(id, backupId) }
+  async restoreBackup(id: string, backupId: string) {
+    await this.backupService.restore(id, backupId)
+    if (this.config(id).kind === 'paper') this.playerService.apply(id, this.directory(id))
+  }
   async refreshBackups(id: string) { await this.backupService.refresh(id) }
   saveBackupSchedule(id: string, enabled: boolean, hour: number, retain: number) { this.backupService.schedule(id, enabled, hour, retain) }
 
@@ -405,19 +412,8 @@ export class NetworkRuntime {
     for (const server of targets) {
       this.playerService.apply(server.id, this.directory(server.id))
       if (!this.manager.get(server.id).child) continue
-      const command = { kick: `minecraft:kick ${player.name} Kicked by network administrator`, ban: `minecraft:ban ${player.name} Banned by network administrator`, unban: `minecraft:pardon ${player.name}`, 'whitelist-add': 'minecraft:whitelist reload', 'whitelist-remove': 'minecraft:whitelist reload' }[action]
+      const command = { ban: `minecraft:ban ${player.name} Banned by network administrator`, unban: `minecraft:pardon ${player.name}` }[action]
       this.manager.command(server.id, command)
-    }
-  }
-  setNetworkWhitelist(enabled: boolean) {
-    const targets = this.playerTargets()
-    this.playerService.whitelist(enabled)
-    for (const server of targets) {
-      this.playerService.apply(server.id, this.directory(server.id))
-      if (this.manager.get(server.id).child) {
-        this.manager.command(server.id, 'minecraft:whitelist reload')
-        this.manager.command(server.id, `minecraft:whitelist ${enabled ? 'on' : 'off'}`)
-      }
     }
   }
 

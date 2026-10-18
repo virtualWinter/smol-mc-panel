@@ -7,6 +7,17 @@ import { proxyConfig, saveConfig } from '../src/server/config'
 import { writeText } from '../src/server/files'
 import { defaults } from './helpers'
 
+test('Paper config writes cannot re-enable whitelisting', async () => {
+  const root = mkdtempSync('/tmp/opencode/whitelist-config-')
+  saveConfig(root, defaults())
+  const runtime = new NetworkRuntime(root, false)
+  try {
+    const file = resolve(runtime.directory('survival'), 'server.properties')
+    await runtime.withFileWrite('survival', () => writeText(runtime.directory('survival'), 'server.properties', '# Keep me\nwhite-list=true\nenforce-whitelist=true\n'))
+    assert.equal(readFileSync(file, 'utf8'), '# Keep me\nwhite-list=false\nenforce-whitelist=false\n')
+  } finally { await runtime.shutdown(); rmSync(root, { recursive: true, force: true }) }
+})
+
 test('backends can be created and removed without deleting their files or backups', async () => {
   const root = mkdtempSync('/tmp/opencode/topology-')
   saveConfig(root, defaults())

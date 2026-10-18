@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from '
 import { resolve } from 'node:path'
 import { parse as parseToml } from 'smol-toml'
 import type { ServerConfig } from './config'
-import { serverDirectory } from './paths'
+import { safePath, serverDirectory } from './paths'
 
 const writeNew = (path: string, content: string) => { if (!existsSync(path)) writeFileSync(path, content, { flag: 'wx', mode: 0o600 }) }
 
@@ -14,6 +14,21 @@ function syncFile(file: string, text: string, updated: string) {
   if (updated === text) return
   writeFileSync(`${file}.tmp`, updated, { mode: 0o600 })
   renameSync(`${file}.tmp`, file)
+}
+
+/** Paper backends never enforce a whitelist. Preserve unrelated properties and comments. */
+export function disablePaperWhitelist(directory: string) {
+  const file = safePath(directory, 'server.properties')
+  if (!existsSync(file)) return false
+  const text = readFileSync(file, 'utf8')
+  let updated = text
+  for (const key of ['white-list', 'enforce-whitelist']) {
+    const pattern = new RegExp(`^[ \\t]*${key}(?:[ \\t]*[=:][ \\t]*|[ \\t]+).*\\r?$`, 'gm')
+    if (pattern.test(updated)) updated = updated.replace(pattern, `${key}=false`)
+    else updated += `${updated.endsWith('\n') || !updated ? '' : '\n'}${key}=false\n`
+  }
+  syncFile(file, text, updated)
+  return updated !== text
 }
 
 /** Points the existing proxy bind at a new address without touching any other line. */
@@ -100,6 +115,7 @@ export function provisionNetwork(root: string, servers: ServerConfig[]) {
       writeNew(resolve(directory, 'eula.txt'), '# Review https://aka.ms/MinecraftEULA before accepting.\neula=false\n')
       writeNew(resolve(directory, 'server.properties'), `server-ip=127.0.0.1\nserver-port=${server.address.split(':')[1]}\nonline-mode=false\nenforce-secure-profile=false\nmax-players=20\nenable-status=true\nenable-query=false\nenable-rcon=false\ngamemode=${server.id === 'creative' ? 'creative' : 'survival'}\nmotd=${server.name}\n`)
       mkdirSync(resolve(directory, 'config'), { recursive: true })
+      disablePaperWhitelist(directory)
       writeNew(resolve(directory, 'config/paper-global.yml'), `proxies:\n  velocity:\n    enabled: true\n    online-mode: true\n    secret: ${JSON.stringify(secret)}\n`)
     }
   }

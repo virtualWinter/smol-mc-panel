@@ -13,7 +13,9 @@ export async function powerServer(id: string, action: 'Start' | 'Restart' | 'Sto
 }
 
 export async function sendCommand(id: string, command: string) {
-  runtime().config(id)
+  const config = runtime().config(id)
+  if (typeof command !== 'string') throw new PanelError('Invalid command.')
+  if (config.kind === 'paper' && /(?:^\/?|\brun\s+)(?:minecraft:)?whitelist\s+on(?:\s|$)/iu.test(command.trim())) throw new PanelError('Whitelisting is disabled for Paper servers.')
   runtime().manager.command(id, command)
 }
 
@@ -31,7 +33,9 @@ export async function uploadFiles(id: string, destination: string, data: FormDat
   await runtime().withFileWrite(id, () => uploadEntries(runtime().directory(id), destination, data))
 }
 export async function readFile(id: string, path: string) { return readText(runtime().directory(id), path) }
-export async function saveFile(id: string, path: string, content: string) { await runtime().withFileWrite(id, () => writeText(runtime().directory(id), path, content)) }
+export async function saveFile(id: string, path: string, content: string) {
+  await runtime().withFileWrite(id, () => writeText(runtime().directory(id), path, content))
+}
 export async function createBackup(id: string) { await runtime().createBackup(id) }
 export async function deleteBackup(id: string, backupId: string) { await runtime().deleteBackup(id, backupId) }
 export async function restoreBackup(id: string, backupId: string) { await runtime().restoreBackup(id, backupId) }
@@ -42,4 +46,3 @@ export async function pluginVersions(id: string, source: PluginProject['source']
 export async function installPlugin(id: string, source: PluginProject['source'], project: string, version: string, gameVersion: string) { await runtime().installPlugin(id, source, project, version, gameVersion) }
 export async function removePlugin(id: string, source: PluginProject['source'], project: string) { await runtime().removePlugin(id, source, project) }
 export async function managePlayer(action: PlayerAction, name: string) { await runtime().managePlayer(action, name) }
-export async function setNetworkWhitelist(enabled: boolean) { runtime().setNetworkWhitelist(enabled) }
