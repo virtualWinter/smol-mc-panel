@@ -14,7 +14,9 @@ export default function NetworkServers() {
   const [input, setInput] = useState<SetupServerInput>({ id: '', name: '', port: 25568, maxMemory: 2048, javaVersion: 'Java 25' })
   const [removeId, setRemoveId] = useState('')
   const backends = servers.filter((s) => s.kind === 'paper')
-  const proxyStopped = servers.find((s) => s.kind === 'velocity')?.status === 'Offline'
+  const proxy = servers.find((s) => s.kind === 'velocity')
+  const proxyRunning = proxy?.status !== 'Offline'
+  const liveUpdates = proxy?.telemetry?.proxyTopology === true
   const selected = backends.find((s) => s.id === removeId)
   async function run(operation: () => Promise<unknown>) {
     setBusy(true); setError('')
@@ -27,7 +29,7 @@ export default function NetworkServers() {
       <DialogTitle>Servers</DialogTitle>
       <DialogContent><Stack spacing={2}>
         <Tabs value={tab} onChange={(_, value: string) => { setTab(value); setError('') }} aria-label="Manage servers"><Tab label="Add" value="add" disabled={busy} /><Tab label="Remove" value="remove" disabled={busy} /></Tabs>
-        {!proxyStopped && <Alert severity="info">Stop Velocity to change servers.</Alert>}
+        {proxyRunning && <Typography variant="caption" color="text.secondary">{liveUpdates ? 'Velocity applies server changes immediately.' : 'Restart Velocity once to apply server changes without stopping it.'}</Typography>}
         {error && <Alert severity="error">{error}</Alert>}
         {tab === 'add' ? <Stack component="form" id="add-backend" spacing={2} onSubmit={(e) => { e.preventDefault(); void run(() => addServer(input)) }}>
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
@@ -44,7 +46,7 @@ export default function NetworkServers() {
           {backends.length <= 1 && <Typography variant="caption" color="text.secondary">Keep at least one backend.</Typography>}
         </>}
       </Stack></DialogContent>
-      <DialogActions><Button disabled={busy} onClick={() => setOpen(false)}>Cancel</Button>{tab === 'add' ? <Button variant="contained" type="submit" form="add-backend" disabled={busy || !proxyStopped}>{busy ? 'Creating…' : 'Add server'}</Button> : <Button color="error" variant="contained" disabled={busy || !proxyStopped || selected?.status !== 'Offline' || backends.length <= 1} onClick={() => { if (window.confirm(`Remove ${selected?.name} from the network? Files and backups are kept.`)) void run(() => removeServer(removeId)) }}>{busy ? 'Removing…' : 'Remove server'}</Button>}</DialogActions>
+      <DialogActions><Button disabled={busy} onClick={() => setOpen(false)}>Cancel</Button>{tab === 'add' ? <Button variant="contained" type="submit" form="add-backend" disabled={busy}>{busy ? 'Creating…' : 'Add server'}</Button> : <Button color="error" variant="contained" disabled={busy || selected?.status !== 'Offline' || backends.length <= 1} onClick={() => { if (window.confirm(`Remove ${selected?.name} from the network? Files and backups are kept.`)) void run(() => removeServer(removeId)) }}>{busy ? 'Removing…' : 'Remove server'}</Button>}</DialogActions>
     </Dialog>
   </>
 }

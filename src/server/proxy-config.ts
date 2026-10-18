@@ -31,3 +31,14 @@ export function velocityStartupIssue(directory: string): string | undefined {
 export function proxyStartupIssue(kind: 'velocity' | 'paper', directory: string) {
   return kind === 'velocity' ? velocityStartupIssue(directory) : undefined
 }
+
+/** Reads the backend map and fallback order back out of velocity.toml, for a live [servers] update. */
+export function readProxyTopology(directory: string): { order: string[]; servers: [string, string][] } | undefined {
+  let config: unknown
+  try { config = parseToml(readText(directory, 'velocity.toml')) } catch { return }
+  if (!record(config) || !record(config.servers)) return
+  const servers: [string, string][] = []
+  for (const [name, address] of Object.entries(config.servers)) if (name !== 'try' && typeof address === 'string' && validAddress(address)) servers.push([name, address])
+  const order = Array.isArray(config.servers.try) ? (config.servers.try as unknown[]).filter((name): name is string => typeof name === 'string' && servers.some(([id]) => id === name)) : []
+  return servers.length ? { order, servers } : undefined
+}

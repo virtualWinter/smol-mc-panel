@@ -74,6 +74,7 @@ export interface AgentMetrics {
   proxyVersion?: string
   minecraftVersion?: string
   proxyControl?: boolean
+  proxyTopology?: boolean
   players?: { name: string; uuid: string; ping: number; serverId?: string }[]
   worlds?: { name: string; players: number; entities: number; chunks: number }[]
 }

@@ -99,6 +99,32 @@ test('new network generates secure forwarding, requires JARs and EULA, and creat
   } finally { await runtime.shutdown(); rmSync(root, { recursive: true, force: true }) }
 })
 
+test('backends can be added and removed while the proxy runs through a live topology update', async () => {
+  const root = mkdtempSync('/tmp/opencode/live-topology-')
+  saveConfig(root, defaults())
+  const runtime = new NetworkRuntime(root, false)
+  try {
+    const processes = (runtime as unknown as { manager: { processes: Map<string, Record<string, unknown> & { child?: { pid: number } }> } }).manager.processes
+    const proxy = processes.get('proxy') ?? (processes.set('proxy', { status: 'Online', logs: [], logCount: 0, intentionalStop: false, restarts: [] }), processes.get('proxy')!)
+    proxy.child = { pid: process.pid }
+    const telemetry = (runtime as unknown as { telemetry: { latest: (id: string) => unknown; setServers: (id: string, order: string[], servers: [string, string][]) => void } }).telemetry
+    const pushed: [string, string][][] = []
+    telemetry.setServers = (_id, _order, servers) => { pushed.push(servers) }
+
+    telemetry.latest = () => ({ proxyControl: true })
+    assert.throws(() => runtime.addServer({ id: 'events', name: 'Events', port: 25568, maxMemory: 2048, javaVersion: 'Java 25' }), /Restart the Velocity proxy/u)
+
+    telemetry.latest = () => ({ proxyTopology: true })
+    runtime.addServer({ id: 'events', name: 'Events', port: 25568, maxMemory: 2048, javaVersion: 'Java 25' })
+    assert.deepEqual(pushed.at(-1)?.map(([id]) => id), ['survival', 'creative', 'events'])
+    assert.ok(readFileSync(resolve(root, 'servers/proxy/velocity.toml'), 'utf8').includes('events = "127.0.0.1:25568"'))
+
+    runtime.removeServer('creative')
+    assert.deepEqual(pushed.at(-1)?.map(([id]) => id), ['survival', 'events'])
+    assert.ok(!readFileSync(resolve(root, 'servers/proxy/velocity.toml'), 'utf8').includes('creative'))
+  } finally { await runtime.shutdown(); rmSync(root, { recursive: true, force: true }) }
+})
+
 test('a proxy without backends keeps its empty [servers] table and reports an issue instead of starting', async () => {
   const root = mkdtempSync('/tmp/opencode/empty-network-runtime-')
   saveConfig(root, [proxyConfig()])

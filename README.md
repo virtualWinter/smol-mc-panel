@@ -85,7 +85,7 @@ Opening Plugins automatically browses popular projects (by downloads) from the s
 
 ## Dokploy deployment
 
-After setup, use **Network → Manage servers** to create or unregister Paper backends. Stop Velocity first so routing changes take effect on its next start; the backend being removed must also be stopped. Removal always preserves its directory and backups, and preserved directories cannot be reused accidentally. New backends are provisioned without downloading a JAR or accepting the EULA. At least one backend must remain.
+After setup, use **Network → Manage servers** to create or unregister Paper backends. Adding a backend, or removing a stopped one, is applied to a running Velocity immediately: the panel rewrites only the `[servers]` table and asks the internal agent to register/unregister that backend through Velocity's own server API, moving any connected players to the next fallback rather than reloading `velocity.toml` (bind, forwarding, and other settings are untouched). If the running agent predates this support, restart Velocity once (or stop it) to enable live changes. The backend being removed must be stopped. Removal always preserves its directory and backups, and preserved directories cannot be reused accidentally. New backends are provisioned without downloading a JAR or accepting the EULA. At least one backend must remain.
 
 Deploy as a Dokploy **Docker Compose** service using this repository's `docker-compose.yml`; Dokploy's Traefik terminates TLS and routes to the panel. Set the service domain in Dokploy and configure the panel env so both layers agree:
 

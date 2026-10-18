@@ -13,7 +13,7 @@ import type { DownloadProgressState, MetricHistory, PanelState, Server, SetupSer
 import { acquireLock } from './lock'
 import { installedSource, reinstallJar } from './downloads'
 import { installJava, managedJava } from './java'
-import { proxyStartupIssue } from './proxy-config'
+import { proxyStartupIssue, readProxyTopology } from './proxy-config'
 import { requiredJava } from './jar-java'
 import { processAlive, processStart, registration } from './liveness'
 import { buildAgent } from './agent-build'
@@ -118,10 +118,13 @@ export class NetworkRuntime {
     const next = [...this.configs, backend]
     validateNetwork(next)
     const proxy = next.find((server) => server.kind === 'velocity')!
-    this.assertWritable(proxy.id)
+    const live = Boolean(this.manager.get(proxy.id).child)
+    if (live) this.assertProxyTopology(proxy)
+    else this.assertWritable(proxy.id)
     provisionNetwork(this.root, next)
     saveConfig(this.root, next)
     this.configs = next
+    if (live) this.pushProxyTopology(proxy)
     this.metrics[backend.id] = emptyMetrics(false)
     this.playerService.apply(backend.id, this.directory(backend.id))
   }
@@ -132,17 +135,31 @@ export class NetworkRuntime {
     if (this.configs.filter((server) => server.kind === 'paper').length <= 1) throw new PanelError('Keep at least one Paper backend.')
     this.assertWritable(id)
     const proxy = this.configs.find((server) => server.kind === 'velocity')!
-    this.assertWritable(proxy.id)
+    const live = Boolean(this.manager.get(proxy.id).child)
+    if (live) this.assertProxyTopology(proxy)
+    else this.assertWritable(proxy.id)
     const next = this.configs.filter((server) => server.id !== id)
     provisionNetwork(this.root, next)
     saveConfig(this.root, next)
     this.configs = next
+    if (live) this.pushProxyTopology(proxy)
     this.manager.processes.delete(id)
     delete this.metrics[id]
     delete this.downloads[id]
     this.usage.delete(id)
     this.playerCounts.delete(id)
     this.agentArgs.delete(id)
+  }
+
+  /** Live [servers] updates need a running proxy whose agent advertises topology support. */
+  private assertProxyTopology(proxy: ServerConfig) {
+    if (!this.telemetry.latest(proxy.id)?.proxyTopology) throw new PanelError('Restart the Velocity proxy once to enable live server changes, or stop it and try again.')
+  }
+
+  private pushProxyTopology(proxy: ServerConfig) {
+    const topology = readProxyTopology(this.directory(proxy.id))
+    if (!topology) throw new PanelError('Could not read the backend list from velocity.toml.')
+    this.telemetry.setServers(proxy.id, topology.order, topology.servers)
   }
 
   /** Strict gate: the server must be stopped and idle for restarts, settings, EULA, reinstalls, and backups. */

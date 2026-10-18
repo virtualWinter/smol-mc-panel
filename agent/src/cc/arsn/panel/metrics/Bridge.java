@@ -161,6 +161,7 @@ public final class Bridge {
             try { result.put("onlinePlayers", call(proxy, "getPlayerCount")); }
             catch (Exception ignored) { }
             result.put("proxyControl", true);
+            result.put("proxyTopology", topologySupported());
             List<Map<String, Object>> players = new ArrayList<>();
             try {
                 for (Object player : (Collection<?>) call(proxy, "getAllPlayers")) {
@@ -213,19 +214,126 @@ public final class Bridge {
                 }
                 response.flip();
                 String commands = StandardCharsets.UTF_8.decode(response).toString();
-                for (String line : commands.split("\n")) {
-                    if (!line.matches("kick [a-fA-F0-9]{8}(?:-[a-fA-F0-9]{4}){3}-[a-fA-F0-9]{12}")) continue;
-                    try {
-                        java.util.UUID uuid = java.util.UUID.fromString(line.substring(5));
-                        java.util.Optional<?> target = (java.util.Optional<?>) proxy.getClass().getMethod("getPlayer", java.util.UUID.class).invoke(proxy, uuid);
-                        if (target.isEmpty()) continue;
-                        Class<?> component = Class.forName("net.kyori.adventure.text.Component", true, proxy.getClass().getClassLoader());
-                        Object reason = component.getMethod("text", String.class).invoke(null, "Disconnected by network administrator");
-                        target.get().getClass().getMethod("disconnect", component).invoke(target.get(), reason);
-                    } catch (Exception ignored) { }
-                }
+                for (String line : commands.split("\n")) if (!line.isEmpty()) runCommand(line);
             }
         }
+    }
+
+    /** Bounded, panel-authored jobs only: a UUID disconnect or a [servers] topology update. */
+    private static void runCommand(String line) {
+        if (line.startsWith("servers ")) { applyServers(line.substring(8)); return; }
+        if (!line.matches("kick [a-fA-F0-9]{8}(?:-[a-fA-F0-9]{4}){3}-[a-fA-F0-9]{12}")) return;
+        try {
+            java.util.UUID uuid = java.util.UUID.fromString(line.substring(5));
+            java.util.Optional<?> target = (java.util.Optional<?>) proxy.getClass().getMethod("getPlayer", java.util.UUID.class).invoke(proxy, uuid);
+            if (target.isEmpty()) return;
+            Class<?> component = Class.forName("net.kyori.adventure.text.Component", true, proxy.getClass().getClassLoader());
+            Object reason = component.getMethod("text", String.class).invoke(null, "Disconnected by network administrator");
+            target.get().getClass().getMethod("disconnect", component).invoke(target.get(), reason);
+        } catch (Throwable ignored) { }
+    }
+
+    /** True only when this proxy build exposes the server registration methods a live [servers] update needs. */
+    private static boolean topologySupported() {
+        if (proxy == null) return false;
+        try {
+            Class<?> serverInfoType = Class.forName("com.velocitypowered.api.proxy.server.ServerInfo", true, proxy.getClass().getClassLoader());
+            proxy.getClass().getMethod("registerServer", serverInfoType);
+            proxy.getClass().getMethod("unregisterServer", serverInfoType);
+            proxy.getClass().getMethod("getAllServers");
+            return true;
+        } catch (Throwable ignored) { return false; }
+    }
+
+    /** Applies only the [servers] table: registers/unregisters backends without reloading bind or any other setting.
+     *
+     * The panel writes the spec as {@code <try1|try2>;<name>=<host:port>,<name>=<host:port>}. Removed or re-pointed
+     * backends first have their players moved to the next registered server, mirroring Velocity's own reload. */
+    private static void applyServers(String spec) {
+        if (proxy == null) return;
+        try {
+            ClassLoader loader = proxy.getClass().getClassLoader();
+            Class<?> serverInfoType = Class.forName("com.velocitypowered.api.proxy.server.ServerInfo", true, loader);
+            Class<?> registeredType = Class.forName("com.velocitypowered.api.proxy.server.RegisteredServer", true, loader);
+            java.lang.reflect.Constructor<?> newInfo = serverInfoType.getConstructor(String.class, java.net.InetSocketAddress.class);
+            java.lang.reflect.Method register = proxy.getClass().getMethod("registerServer", serverInfoType);
+            java.lang.reflect.Method unregister = proxy.getClass().getMethod("unregisterServer", serverInfoType);
+
+            int split = spec.indexOf(';');
+            String orderPart = split < 0 ? "" : spec.substring(0, split);
+            String pairsPart = split < 0 ? spec : spec.substring(split + 1);
+            Map<String, Object> desired = new LinkedHashMap<>();
+            for (String pair : pairsPart.split(",")) {
+                if (pair.isEmpty()) continue;
+                int equals = pair.indexOf('=');
+                if (equals <= 0 || equals == pair.length() - 1) continue;
+                String name = pair.substring(0, equals);
+                java.net.InetSocketAddress address = parseAddress(pair.substring(equals + 1));
+                if (address == null) continue;
+                desired.put(name.toLowerCase(java.util.Locale.US), newInfo.newInstance(name, address));
+            }
+            if (desired.isEmpty()) return;
+
+            Map<String, Object> current = new LinkedHashMap<>();
+            for (Object rs : (Collection<?>) proxy.getClass().getMethod("getAllServers").invoke(proxy)) {
+                Object info = rs.getClass().getMethod("getServerInfo").invoke(rs);
+                current.put(String.valueOf(info.getClass().getMethod("getName").invoke(info)).toLowerCase(java.util.Locale.US), rs);
+            }
+            for (Map.Entry<String, Object> entry : current.entrySet()) {
+                if (desired.containsKey(entry.getKey())) continue;
+                List<Object> leaving = new ArrayList<>((Collection<?>) entry.getValue().getClass().getMethod("getPlayersConnected").invoke(entry.getValue()));
+                Object info = entry.getValue().getClass().getMethod("getServerInfo").invoke(entry.getValue());
+                unregister.invoke(proxy, info);
+                for (Object player : leaving) movePlayer(player, registeredType);
+            }
+            for (Map.Entry<String, Object> entry : desired.entrySet()) {
+                Object existing = current.get(entry.getKey());
+                if (existing == null) { register.invoke(proxy, entry.getValue()); continue; }
+                Object info = existing.getClass().getMethod("getServerInfo").invoke(existing);
+                if (info.equals(entry.getValue())) continue;
+                List<Object> leaving = new ArrayList<>((Collection<?>) existing.getClass().getMethod("getPlayersConnected").invoke(existing));
+                unregister.invoke(proxy, info);
+                register.invoke(proxy, entry.getValue());
+                for (Object player : leaving) movePlayer(player, registeredType);
+            }
+            if (!orderPart.isEmpty()) {
+                List<String> order = new ArrayList<>();
+                for (String name : orderPart.split("\\|")) if (desired.containsKey(name.toLowerCase(java.util.Locale.US))) order.add(name);
+                try {
+                    Object configuration = proxy.getClass().getMethod("getConfiguration").invoke(proxy);
+                    configuration.getClass().getMethod("setAttemptConnectionOrder", List.class).invoke(configuration, order);
+                } catch (Throwable ignored) { /* Older configuration objects simply keep their current fallback order. */ }
+            }
+        } catch (Throwable ignored) { /* A failed topology update leaves the running proxy untouched. */ }
+    }
+
+    /** Moves one player off a backend being removed or re-pointed, disconnecting only when no fallback exists. */
+    private static void movePlayer(Object player, Class<?> registeredType) {
+        try {
+            java.util.Optional<?> next = (java.util.Optional<?>) player.getClass().getMethod("getNextServerToTry").invoke(player);
+            if (next.isPresent()) {
+                Object request = player.getClass().getMethod("createConnectionRequest", registeredType).invoke(player, next.get());
+                request.getClass().getMethod("connect").invoke(request);
+                return;
+            }
+        } catch (Throwable ignored) { }
+        try {
+            Class<?> component = Class.forName("net.kyori.adventure.text.Component", true, proxy.getClass().getClassLoader());
+            Object reason = component.getMethod("text", String.class).invoke(null, "This server was removed from the network");
+            player.getClass().getMethod("disconnect", component).invoke(player, reason);
+        } catch (Throwable ignored) { }
+    }
+
+    private static java.net.InetSocketAddress parseAddress(String value) {
+        try {
+            int colon = value.lastIndexOf(':');
+            if (colon <= 0 || colon == value.length() - 1) return null;
+            String host = value.substring(0, colon);
+            if (host.startsWith("[") && host.endsWith("]")) host = host.substring(1, host.length() - 1);
+            int port = Integer.parseInt(value.substring(colon + 1));
+            if (host.isEmpty() || port < 1 || port > 65535) return null;
+            return new java.net.InetSocketAddress(host, port);
+        } catch (Exception ignored) { return null; }
     }
 
     private static String json(Object value) {

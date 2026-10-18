@@ -26,17 +26,26 @@ test('proxy disconnect messages are UUID-only, authenticated, and tied to the cu
     collector.configuration(config)
     const token = readFileSync(resolve(root, 'agents/proxy.properties'), 'utf8').match(/token=([0-9a-f]+)/u)![1]
     await collector.start()
-    const sample = { version: 1, serverId: 'proxy', token, pid, heapUsed: 1, heapMax: 2, heapCommitted: 1, uptime: 1, threads: 1, javaVersion: '25', minecraftVersion: '26.1.2', proxyControl: true, players: [{ name: 'Example', uuid, ping: 20, serverId: 'survival' }] }
+    const sample = { version: 1, serverId: 'proxy', token, pid, heapUsed: 1, heapMax: 2, heapCommitted: 1, uptime: 1, threads: 1, javaVersion: '25', minecraftVersion: '26.1.2', proxyControl: true, proxyTopology: true, players: [{ name: 'Example', uuid, ping: 20, serverId: 'survival' }] }
     assert.throws(() => collector.kick('proxy', uuid), /Restart/u)
+    assert.throws(() => collector.setServers('proxy', ['survival'], [['survival', '127.0.0.1:25566']]), /Restart/u)
     await exchange(sample)
     assert.equal(collector.latest('proxy')?.minecraftVersion, '26.1.2')
+    assert.equal(collector.latest('proxy')?.proxyTopology, true)
     assert.equal(collector.latest('proxy')?.players?.[0].serverId, 'survival')
     assert.throws(() => collector.kick('proxy', 'Example\nstop'), /UUID/u)
+    assert.throws(() => collector.setServers('proxy', ['survival'], [['survival', '127.0.0.1:25566'], ['bad name', '127.0.0.1:1']]), /topology/u)
+    assert.throws(() => collector.setServers('proxy', ['survival'], []), /Keep at least one/u)
     collector.kick('proxy', uuid)
     assert.equal(await exchange({ ...sample, token: '0'.repeat(64) }), '')
     assert.equal(await exchange(sample), `kick ${uuid}\n`)
     assert.equal(await exchange(sample), '')
     collector.kick('proxy', uuid)
+    collector.setServers('proxy', ['survival'], [['survival', '127.0.0.1:25566']])
+    collector.setServers('proxy', ['survival'], [['survival', '127.0.0.1:25566'], ['creative', '127.0.0.1:25567']])
+    assert.equal(await exchange(sample), `kick ${uuid}\nservers survival;survival=127.0.0.1:25566,creative=127.0.0.1:25567\n`)
+    assert.equal(await exchange(sample), '')
+    collector.setServers('proxy', ['survival'], [['survival', '127.0.0.1:25566']])
     pid++
     assert.equal(await exchange({ ...sample, pid }), '', 'old-process messages must not reach a restarted proxy')
   } finally { await collector.close(); rmSync(root, { recursive: true, force: true }) }

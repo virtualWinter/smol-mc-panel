@@ -17,6 +17,7 @@ export class TelemetryCollector {
   private tokens = new Map<string, string>()
   private metrics = new Map<string, AgentMetrics>()
   private kicks = new Map<string, { uuid: string; at: number; pid: number }[]>()
+  private topologies = new Map<string, { spec: string; at: number; pid: number }>()
   readonly socketPath: string
   constructor(private root: string, private pidFor: (id: string) => number | undefined) { this.socketPath = resolve(root, 'metrics.sock') }
 
@@ -40,8 +41,11 @@ export class TelemetryCollector {
           if (end < 0) return
           const id = this.accept(frame.subarray(0, end).toString('utf8'))
           const queued = id ? (this.kicks.get(id) ?? []).filter((job) => Date.now() - job.at < 30_000 && job.pid === this.pidFor(id)) : []
-          if (id) this.kicks.delete(id)
-          socket.end(queued.map((job) => `kick ${job.uuid}\n`).join(''))
+          const topology = id ? this.topologies.get(id) : undefined
+          const pending = id && topology && Date.now() - topology.at < 30_000 && topology.pid === this.pidFor(id) ? topology : undefined
+          if (id) { this.kicks.delete(id); this.topologies.delete(id) }
+          const commands = queued.map((job) => `kick ${job.uuid}\n`).join('') + (pending ? `servers ${pending.spec}\n` : '')
+          socket.end(commands)
         })
       })
       server.maxConnections = 32
@@ -80,6 +84,7 @@ export class TelemetryCollector {
       if (text(data.proxyVersion, 128)) value.proxyVersion = data.proxyVersion
       if (text(data.minecraftVersion, 40) && /^[0-9][0-9a-zA-Z.+_-]{1,39}$/u.test(data.minecraftVersion)) value.minecraftVersion = data.minecraftVersion
       if (data.proxyControl === true) value.proxyControl = true
+      if (data.proxyTopology === true) value.proxyTopology = true
       if (Array.isArray(data.tps) && data.tps.length === 3 && data.tps.every((item) => number(item, 25))) value.tps = data.tps.map((item: number) => Math.min(20, item))
       if (Array.isArray(data.players)) value.players = data.players.slice(0, 200).filter((item) => item && text(item.name, 64) && text(item.uuid, 64) && number(item.ping, 1_000_000)).map((item) => ({ name: item.name, uuid: item.uuid, ping: item.ping, ...(text(item.serverId, 64) && /^[a-z0-9][a-z0-9_-]{0,63}$/u.test(item.serverId) ? { serverId: item.serverId } : {}) }))
       if (Array.isArray(data.worlds)) value.worlds = data.worlds.slice(0, 32).filter((item) => item && text(item.name, 128) && number(item.players, 1_000_000) && number(item.entities, 100_000_000) && number(item.chunks, 100_000_000)).map((item) => ({ name: item.name, players: item.players, entities: item.entities, chunks: item.chunks }))
@@ -102,9 +107,22 @@ export class TelemetryCollector {
     this.kicks.set(id, [...jobs, { uuid, at: Date.now(), pid }])
   }
 
+  /** Queues a live [servers] update: the agent diffs it against the running proxy without reloading the rest of velocity.toml. */
+  setServers(id: string, order: string[], servers: [string, string][]) {
+    const pid = this.pidFor(id)
+    if (!pid || !this.latest(id)?.proxyTopology) throw new PanelError('Restart the Velocity proxy to apply server changes without stopping it.')
+    if (!servers.length) throw new PanelError('Keep at least one Paper backend.')
+    for (const [name, address] of servers) {
+      if (!/^[a-z0-9][a-z0-9_-]{0,63}$/u.test(name) || !/^(?:\[[0-9a-f:]+\]|[^\s:]+):\d{1,5}$/iu.test(address)) throw new PanelError('Invalid backend topology.')
+    }
+    const spec = `${order.join('|')};${servers.map(([name, address]) => `${name}=${address}`).join(',')}`
+    if (spec.length > 4096) throw new PanelError('The backend list is too large for a live update.')
+    this.topologies.set(id, { spec, at: Date.now(), pid })
+  }
+
   async close() {
     if (this.server) await new Promise<void>((resolve) => this.server!.close(() => resolve()))
     if (existsSync(this.socketPath) && lstatSync(this.socketPath).isSocket()) unlinkSync(this.socketPath)
-    this.server = undefined; this.starting = undefined; this.metrics.clear(); this.kicks.clear()
+    this.server = undefined; this.starting = undefined; this.metrics.clear(); this.kicks.clear(); this.topologies.clear()
   }
 }
