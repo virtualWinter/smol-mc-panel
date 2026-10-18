@@ -11,6 +11,7 @@ import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrate
 import { restrictToVerticalAxis } from './sortConstraints'
 import { usePanel } from '../data/usePanel'
 import NetworkServers from './NetworkServers'
+import NetworkPlayers from './NetworkPlayers'
 
 export default function ServerOverview() {
   const { servers, reorderServers } = usePanel()
@@ -36,7 +37,7 @@ export default function ServerOverview() {
         /><IconButton aria-label="Sign out" onClick={() => { void logout().catch((error: unknown) => setError(String(error))) }}><LogoutOutlinedIcon fontSize="small" /></IconButton></Stack>
       </Stack>
       {error && <Alert severity="error">{error}</Alert>}
-      <NetworkServers />
+      <Stack direction="row" spacing={1}><NetworkServers /><NetworkPlayers /></Stack>
         <DndContext sensors={sensors} collisionDetection={closestCenter} modifiers={[restrictToVerticalAxis]} onDragEnd={({ active, over }) => { if (over) void reorderServers(String(active.id), String(over.id)).catch((error: unknown) => window.alert(String(error))) }}>
         <SortableContext items={filtered.map((server) => server.id)} strategy={verticalListSortingStrategy}>
         <Stack spacing={2}>

@@ -1,17 +1,15 @@
-import { execFile, execFileSync } from 'node:child_process'
-import { randomUUID } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { promisify } from 'node:util'
 import { loadConfig, saveConfig, setupNetwork, validateNetwork, type ServerConfig, javaVersions } from './config'
 import { PanelError } from './errors'
-import { formatBytes, listDirectory } from './files'
+import { listDirectory } from './files'
 import { appendMetric, emptyMetrics, processUsage, queryPlayers } from './metrics'
 import { safePath, serverDirectory } from './paths'
 import { ProcessManager } from './process-manager'
 import { provisionNetwork } from './provision'
 import { startupArgs } from './startup'
-import type { Backup, DownloadProgressState, MetricHistory, PanelState, Server, SetupServerInput } from '../types'
+import type { DownloadProgressState, MetricHistory, PanelState, Server, SetupServerInput, PluginProject } from '../types'
 import { acquireLock } from './lock'
 import { installedSource, reinstallJar } from './downloads'
 import { installJava, managedJava } from './java'
@@ -21,10 +19,19 @@ import { processAlive, processStart, registration } from './liveness'
 import { buildAgent } from './agent-build'
 import { readAgentSources } from './agent-sources'
 import { TelemetryCollector } from './telemetry'
-
-const execute = promisify(execFile)
+import { Backups } from './backups'
+import { Plugins, searchPlugins, pluginReleases } from './plugins'
+import { Players, validatePlayerAction, type PlayerAction } from './players'
+import { readJson, saveJson } from './json-store'
+import { reportedMinecraftVersion } from '../minecraft-version'
 
 export class NetworkRuntime {
+  private backupService: Backups
+  private pluginService: Plugins
+  private playerService: Players
+  private backupTimer: ReturnType<typeof setInterval>
+  private closing = false
+  private minecraftVersions: Record<string, string>
   configs: ServerConfig[]
   readonly manager: ProcessManager
   private metrics: Record<string, MetricHistory> = {}
@@ -58,6 +65,7 @@ export class NetworkRuntime {
       }
     }
     this.configs = loadConfig(root)
+    this.minecraftVersions = readJson(resolve(root, 'minecraft-versions.json'), {})
     for (const config of this.configs) serverDirectory(root, config.workingDirectory)
     provisionNetwork(root, this.configs)
     try { this.ticksPerSecond = Number(execFileSync('getconf', ['CLK_TCK'], { encoding: 'utf8', timeout: 1000 })) || 100 } catch { /* Linux normally uses 100 clock ticks. */ }
@@ -73,6 +81,17 @@ export class NetworkRuntime {
       renameSync(`${pidFile}.tmp`, pidFile)
     } })
     this.telemetry = new TelemetryCollector(root, (id) => this.manager.get(id).child?.pid)
+    this.pluginService = new Plugins(root)
+    this.playerService = new Players(root)
+    this.backupService = new Backups(root, {
+      ids: () => this.configs.map((s) => s.id), directory: (id) => this.directory(id), assertIdle: (id) => this.assertWritable(id), busy: this.backupJobs,
+      running: (id) => Boolean(this.manager.get(id).child),
+      available: (id) => !this.closing && !this.writeJobs.has(id) && !this.backupJobs.has(id) && !this.manager.get(id).restartTimer,
+      stop: (id) => this.manager.stop(this.config(id)), start: (id) => this.closing ? Promise.resolve() : this.power(id, 'Start'), log: (id, text) => this.manager.log(id, `[Panel] ${text}`),
+    })
+    this.backupTimer = setInterval(() => { void this.backupService.tick().catch(() => {}) }, 60_000)
+    this.backupTimer.unref()
+    for (const config of this.configs) void this.backupService.refresh(config.id).catch(() => {})
     for (const config of this.configs) this.metrics[config.id] = emptyMetrics(config.kind !== 'paper')
     this.timer = setInterval(() => { void this.sample() }, 2000)
     this.timer.unref()
@@ -102,6 +121,7 @@ export class NetworkRuntime {
     saveConfig(this.root, next)
     this.configs = next
     this.metrics[backend.id] = emptyMetrics(false)
+    this.playerService.apply(backend.id, this.directory(backend.id))
   }
 
   removeServer(id: string) {
@@ -155,6 +175,7 @@ export class NetworkRuntime {
   private checkStart(config: ServerConfig) {
     if (this.backupJobs.has(config.id) || this.writeJobs.has(config.id)) throw new PanelError('Wait for active file operations or backups to finish.')
     this.checkAssets(config)
+    if (config.kind === 'paper') this.playerService.apply(config.id, this.directory(config.id))
     if (!this.javaExecutables.has(Number(config.javaVersion.split(' ')[1]))) throw new PanelError('Java has not been prepared for this server.')
   }
 
@@ -314,6 +335,12 @@ export class NetworkRuntime {
         const process = this.manager.get(config.id)
         const history = this.metrics[config.id]
         const agent = this.telemetry.latest(config.id)
+        const gameVersion = reportedMinecraftVersion(agent)
+        if (config.kind === 'paper' && gameVersion && this.minecraftVersions[config.id] !== gameVersion) {
+          this.minecraftVersions[config.id] = gameVersion
+          saveJson(resolve(this.root, 'minecraft-versions.json'), this.minecraftVersions)
+        }
+        if (agent?.players) this.playerService.remember(agent.players)
         if (!process.child?.pid) { this.usage.delete(config.id); this.playerCounts.delete(config.id); appendMetric(history.cpu, 0); appendMetric(history.ram, 0); appendMetric(history.players, 0); if (history.network) appendMetric(history.network, 0); return }
         const usage = processUsage(process.child.pid)
         const previous = this.usage.get(config.id)
@@ -333,34 +360,60 @@ export class NetworkRuntime {
     finally { this.sampling = false }
   }
 
-  private backups(id: string): Backup[] {
-    this.config(id)
-    const directory = resolve(this.root, 'backups', id)
-    mkdirSync(directory, { recursive: true, mode: 0o700 })
-    return readdirSync(directory).filter((name) => /^[a-f0-9-]{36}\.tar\.gz$/u.test(name)).map((name) => {
-      const path = safePath(directory, name), info = statSync(path)
-      return { id: name.slice(0, -7), name: 'Manual backup', created: info.mtime.toISOString(), size: formatBytes(info.size) }
-    }).sort((a, b) => b.created.localeCompare(a.created))
+  async createBackup(id: string) { await this.backupService.create(id) }
+  async deleteBackup(id: string, backupId: string) { await this.backupService.delete(id, backupId) }
+  async restoreBackup(id: string, backupId: string) { await this.backupService.restore(id, backupId) }
+  async refreshBackups(id: string) { await this.backupService.refresh(id) }
+  saveBackupSchedule(id: string, enabled: boolean, hour: number, retain: number) { this.backupService.schedule(id, enabled, hour, retain) }
+
+  private paper(id: string) { if (this.config(id).kind !== 'paper') throw new PanelError('Plugin management is available for Paper backends only.') }
+  async searchPlugins(id: string, source: PluginProject['source'], query: string) { this.paper(id); return searchPlugins(source, query) }
+  async pluginVersions(id: string, source: PluginProject['source'], project: string, gameVersion: string) {
+    this.paper(id)
+    return (await pluginReleases(source, project, gameVersion)).map(({ id, name, gameVersions, dependencies }) => ({ id, name, gameVersions, dependencies }))
+  }
+  async installPlugin(id: string, source: PluginProject['source'], project: string, version: string, gameVersion: string) {
+    this.paper(id)
+    const actual = reportedMinecraftVersion(this.telemetry.latest(id))
+    if (actual && actual !== gameVersion) throw new PanelError(`The running server reports Minecraft ${actual}. Choose that version.`)
+    await this.withFileWrite(id, () => this.pluginService.install(id, this.directory(id), source, project, version, gameVersion))
+  }
+  async removePlugin(id: string, source: PluginProject['source'], project: string) {
+    this.paper(id); await this.withFileWrite(id, () => this.pluginService.remove(id, this.directory(id), source, project))
   }
 
-  async createBackup(id: string) {
-    this.assertWritable(id)
-    const source = this.directory(id)
-    const directory = resolve(this.root, 'backups', id)
-    mkdirSync(directory, { recursive: true, mode: 0o700 })
-    const target = resolve(directory, `${randomUUID()}.tar.gz`)
-    this.backupJobs.add(id)
-    try {
-      await execute('tar', ['-czf', `${target}.tmp`, '-C', source, '.'], { timeout: 300_000, maxBuffer: 1024 * 1024 })
-      renameSync(`${target}.tmp`, target)
-    } catch { if (existsSync(`${target}.tmp`)) unlinkSync(`${target}.tmp`); throw new PanelError('Backup failed. Ensure tar is installed and there is enough disk space.') }
-    finally { this.backupJobs.delete(id) }
+  private playerTargets() {
+    const targets = this.configs.filter((s) => s.kind === 'paper')
+    for (const server of targets) if (this.writeJobs.has(server.id) || this.backupJobs.has(server.id)) throw new PanelError('Wait for backend file and backup operations to finish.')
+    return targets
   }
-
-  deleteBackup(id: string, backupId: string) {
-    this.config(id)
-    if (!/^[a-f0-9-]{36}$/u.test(backupId)) throw new PanelError('Invalid backup ID.')
-    unlinkSync(safePath(resolve(this.root, 'backups', id), `${backupId}.tar.gz`))
+  async managePlayer(action: PlayerAction, name: string) {
+    validatePlayerAction(action, name)
+    const player = await this.playerService.identity(name)
+    const targets = this.playerTargets()
+    if (action === 'kick') {
+      const proxy = this.configs.find((server) => server.kind === 'velocity')!
+      this.telemetry.kick(proxy.id, player.uuid)
+      return
+    }
+    this.playerService.change(action, player)
+    for (const server of targets) {
+      this.playerService.apply(server.id, this.directory(server.id))
+      if (!this.manager.get(server.id).child) continue
+      const command = { kick: `minecraft:kick ${player.name} Kicked by network administrator`, ban: `minecraft:ban ${player.name} Banned by network administrator`, unban: `minecraft:pardon ${player.name}`, 'whitelist-add': 'minecraft:whitelist reload', 'whitelist-remove': 'minecraft:whitelist reload' }[action]
+      this.manager.command(server.id, command)
+    }
+  }
+  setNetworkWhitelist(enabled: boolean) {
+    const targets = this.playerTargets()
+    this.playerService.whitelist(enabled)
+    for (const server of targets) {
+      this.playerService.apply(server.id, this.directory(server.id))
+      if (this.manager.get(server.id).child) {
+        this.manager.command(server.id, 'minecraft:whitelist reload')
+        this.manager.command(server.id, `minecraft:whitelist ${enabled ? 'on' : 'off'}`)
+      }
+    }
   }
 
   snapshot(url: string): PanelState {
@@ -370,15 +423,20 @@ export class NetworkRuntime {
     const servers: Server[] = this.configs.map((config) => {
       const item = this.manager.get(config.id), history = this.metrics[config.id], players = this.playerCounts.get(config.id)
       const source = installedSource(resolve(this.root, 'installations', `${config.id}.json`), config.kind, config.jarFile)
-      return { ...config, telemetry: this.telemetry.latest(config.id), startupIssue: proxyStartupIssue(config.kind, this.directory(config.id)), download: this.downloads[config.id] ? { ...this.downloads[config.id] } : undefined, jarVersion: source ? `${source.version} (build ${source.build})` : undefined, installed: this.installed(config.id), eulaAccepted: this.eulaAccepted(config.id), status: item.status, logs: [...item.logs], logOffset: item.logCount - item.logs.length, cpu: history.cpu.length ? `${history.cpu.at(-1)!.toFixed(1)}%` : '—', memory: history.ram.length ? `${history.ram.at(-1)!.toFixed(0)} / ${config.maxMemory} MiB` : `— / ${config.maxMemory} MiB`, players: players ? `${players.online} / ${players.max}` : '—' }
+      return { ...config, minecraftVersion: reportedMinecraftVersion(this.telemetry.latest(config.id)) ?? this.minecraftVersions[config.id], telemetry: this.telemetry.latest(config.id), startupIssue: proxyStartupIssue(config.kind, this.directory(config.id)), download: this.downloads[config.id] ? { ...this.downloads[config.id] } : undefined, jarVersion: source ? `${source.version} (build ${source.build})` : undefined, installed: this.installed(config.id), eulaAccepted: this.eulaAccepted(config.id), status: item.status, logs: [...item.logs], logOffset: item.logCount - item.logs.length, cpu: history.cpu.length ? `${history.cpu.at(-1)!.toFixed(1)}%` : '—', memory: history.ram.length ? `${history.ram.at(-1)!.toFixed(0)} / ${config.maxMemory} MiB` : `— / ${config.maxMemory} MiB`, players: players ? `${players.online} / ${players.max}` : '—' }
     })
     let files: PanelState['files'] = {}
     if (serverId && this.configs.some((server) => server.id === serverId) && request.pathname.endsWith('/files')) {
       try { files = { [serverId]: listDirectory(this.directory(serverId), filePath) } }
       catch { files = { [serverId]: [] } }
     }
-    return { servers, files, filePath, backups: Object.fromEntries(this.configs.map((config) => [config.id, this.backups(config.id)])), metrics: structuredClone(this.metrics), javaVersions }
+    const proxyPlayers = servers.find((s) => s.kind === 'velocity')?.telemetry?.players
+    const networkPlayers = proxyPlayers ? proxyPlayers.map((p) => ({ ...p, serverId: p.serverId ?? 'proxy' })) : servers.filter((s) => s.kind === 'paper').flatMap((s) => (s.telemetry?.players ?? []).map((p) => ({ ...p, serverId: s.id })))
+    return { servers, files, filePath, backups: Object.fromEntries(this.configs.map((config) => [config.id, this.backupService.list(config.id)])), metrics: structuredClone(this.metrics), javaVersions,
+      backupSchedules: structuredClone(this.backupService.schedules), backupJobs: [...this.backupJobs], s3Enabled: Boolean(this.backupService.s3),
+      playerPolicy: structuredClone(this.playerService.policy), networkPlayers, plugins: Object.fromEntries(this.configs.filter((s) => s.kind === 'paper').map((s) => [s.id, this.pluginService.list(s.id)])),
+    }
   }
 
-  async shutdown() { clearInterval(this.timer); try { await this.manager.shutdown(this.configs); await this.telemetry.close() } finally { this.releaseLock() } }
+  async shutdown() { this.closing = true; clearInterval(this.timer); clearInterval(this.backupTimer); try { await this.backupService.close(); await this.manager.shutdown(this.configs); await this.telemetry.close() } finally { this.releaseLock() } }
 }

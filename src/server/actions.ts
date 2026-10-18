@@ -4,6 +4,8 @@ import { runtime } from './store'
 import { moveEntry, readText, uploadEntries, writeText } from './files'
 import { PanelError } from './errors'
 import type { Server, SetupServerInput } from '../types'
+import type { PluginProject } from '../types'
+import type { PlayerAction } from './players'
 
 export async function powerServer(id: string, action: 'Start' | 'Restart' | 'Stop') {
   if (!['Start', 'Restart', 'Stop'].includes(action)) throw new PanelError('Invalid power action.')
@@ -31,4 +33,13 @@ export async function uploadFiles(id: string, destination: string, data: FormDat
 export async function readFile(id: string, path: string) { return readText(runtime().directory(id), path) }
 export async function saveFile(id: string, path: string, content: string) { await runtime().withFileWrite(id, () => writeText(runtime().directory(id), path, content)) }
 export async function createBackup(id: string) { await runtime().createBackup(id) }
-export async function deleteBackup(id: string, backupId: string) { runtime().deleteBackup(id, backupId) }
+export async function deleteBackup(id: string, backupId: string) { await runtime().deleteBackup(id, backupId) }
+export async function restoreBackup(id: string, backupId: string) { await runtime().restoreBackup(id, backupId) }
+export async function refreshBackups(id: string) { await runtime().refreshBackups(id) }
+export async function saveBackupSchedule(id: string, enabled: boolean, hour: number, retain: number) { runtime().saveBackupSchedule(id, enabled, hour, retain) }
+export async function searchPlugins(id: string, source: PluginProject['source'], query: string) { return runtime().searchPlugins(id, source, query) }
+export async function pluginVersions(id: string, source: PluginProject['source'], project: string, gameVersion: string) { return runtime().pluginVersions(id, source, project, gameVersion) }
+export async function installPlugin(id: string, source: PluginProject['source'], project: string, version: string, gameVersion: string) { await runtime().installPlugin(id, source, project, version, gameVersion) }
+export async function removePlugin(id: string, source: PluginProject['source'], project: string) { await runtime().removePlugin(id, source, project) }
+export async function managePlayer(action: PlayerAction, name: string) { await runtime().managePlayer(action, name) }
+export async function setNetworkWhitelist(enabled: boolean) { runtime().setNetworkWhitelist(enabled) }

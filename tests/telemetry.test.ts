@@ -8,6 +8,40 @@ import { defaults } from './helpers'
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
+test('proxy disconnect messages are UUID-only, authenticated, and tied to the current process', async () => {
+  const root = mkdtempSync('/tmp/opencode/proxy-control-')
+  let pid = process.pid
+  const collector = new TelemetryCollector(root, () => pid)
+  const config = defaults()[0], uuid = '11111111-1111-1111-1111-111111111111'
+  async function exchange(data: object) {
+    return new Promise<string>((done, reject) => {
+      const socket = connect(collector.socketPath)
+      let response = ''
+      socket.on('error', reject); socket.on('data', (chunk) => { response += chunk })
+      socket.on('end', () => done(response))
+      socket.on('connect', () => socket.write(JSON.stringify(data) + '\n'))
+    })
+  }
+  try {
+    collector.configuration(config)
+    const token = readFileSync(resolve(root, 'agents/proxy.properties'), 'utf8').match(/token=([0-9a-f]+)/u)![1]
+    await collector.start()
+    const sample = { version: 1, serverId: 'proxy', token, pid, heapUsed: 1, heapMax: 2, heapCommitted: 1, uptime: 1, threads: 1, javaVersion: '25', minecraftVersion: '26.1.2', proxyControl: true, players: [{ name: 'Example', uuid, ping: 20, serverId: 'survival' }] }
+    assert.throws(() => collector.kick('proxy', uuid), /Restart/u)
+    await exchange(sample)
+    assert.equal(collector.latest('proxy')?.minecraftVersion, '26.1.2')
+    assert.equal(collector.latest('proxy')?.players?.[0].serverId, 'survival')
+    assert.throws(() => collector.kick('proxy', 'Example\nstop'), /UUID/u)
+    collector.kick('proxy', uuid)
+    assert.equal(await exchange({ ...sample, token: '0'.repeat(64) }), '')
+    assert.equal(await exchange(sample), `kick ${uuid}\n`)
+    assert.equal(await exchange(sample), '')
+    collector.kick('proxy', uuid)
+    pid++
+    assert.equal(await exchange({ ...sample, pid }), '', 'old-process messages must not reach a restarted proxy')
+  } finally { await collector.close(); rmSync(root, { recursive: true, force: true }) }
+})
+
 function frame(collector: TelemetryCollector, data: object) {
   return new Promise<void>((done, fail) => {
     const socket = connect(collector.socketPath)

@@ -4,7 +4,7 @@ import type { Server, SetupServerInput } from '../types'
 import { PanelError } from './errors'
 import { rewriteProxyBind } from './provision'
 
-export type ServerConfig = Omit<Server, 'installed' | 'jarVersion' | 'download' | 'startupIssue' | 'telemetry' | 'eulaAccepted' | 'status' | 'memory' | 'players' | 'cpu' | 'logs' | 'logOffset'>
+export type ServerConfig = Omit<Server, 'installed' | 'jarVersion' | 'minecraftVersion' | 'download' | 'startupIssue' | 'telemetry' | 'eulaAccepted' | 'status' | 'memory' | 'players' | 'cpu' | 'logs' | 'logOffset'>
 export const javaVersions = ['Java 25', 'Java 21', 'Java 17']
 
 export function proxyConfig(): ServerConfig {

@@ -92,6 +92,8 @@ public final class Bridge {
             result.put("mspt", bukkit.getMethod("getAverageTickTime").invoke(null));
             result.put("maxPlayers", bukkit.getMethod("getMaxPlayers").invoke(null));
             result.put("serverVersion", bukkit.getMethod("getVersion").invoke(null));
+            try { result.put("minecraftVersion", bukkit.getMethod("getMinecraftVersion").invoke(null)); }
+            catch (Exception ignored) { result.put("minecraftVersion", String.valueOf(bukkit.getMethod("getBukkitVersion").invoke(null)).split("-", 2)[0]); }
             Collection<?> online = (Collection<?>) bukkit.getMethod("getOnlinePlayers").invoke(null);
             result.put("onlinePlayers", online.size());
             List<Object> players = new ArrayList<>();
@@ -156,6 +158,21 @@ public final class Bridge {
         } else if (proxy != null) {
             try { result.put("onlinePlayers", call(proxy, "getPlayerCount")); }
             catch (Exception ignored) { }
+            result.put("proxyControl", true);
+            List<Map<String, Object>> players = new ArrayList<>();
+            try {
+                for (Object player : (Collection<?>) call(proxy, "getAllPlayers")) {
+                    if (players.size() >= 200) break;
+                    Map<String, Object> item = new LinkedHashMap<>();
+                    item.put("name", call(player, "getUsername"));
+                    item.put("uuid", String.valueOf(call(player, "getUniqueId")));
+                    item.put("ping", Math.max(0, ((Number) call(player, "getPing")).longValue()));
+                    java.util.Optional<?> current = (java.util.Optional<?>) call(player, "getCurrentServer");
+                    if (current.isPresent()) item.put("serverId", call(call(current.get(), "getServerInfo"), "getName"));
+                    players.add(item);
+                }
+                result.put("players", players);
+            } catch (Exception ignored) { }
         }
         if (!"paper".equals(kind)) {
             // Proxy pipeline byte counters since the previous snapshot, reported as bytes/second.
@@ -184,6 +201,27 @@ public final class Bridge {
             while (buffer.hasRemaining()) {
                 if (System.nanoTime() > deadline) return;
                 if (channel.write(buffer) == 0) LockSupport.parkNanos(1_000_000L);
+            }
+            if (proxy != null) {
+                ByteBuffer response = ByteBuffer.allocate(4096);
+                while (System.nanoTime() < deadline && response.hasRemaining()) {
+                    int read = channel.read(response);
+                    if (read < 0) break;
+                    if (read == 0) LockSupport.parkNanos(1_000_000L);
+                }
+                response.flip();
+                String commands = StandardCharsets.UTF_8.decode(response).toString();
+                for (String line : commands.split("\n")) {
+                    if (!line.matches("kick [a-fA-F0-9]{8}(?:-[a-fA-F0-9]{4}){3}-[a-fA-F0-9]{12}")) continue;
+                    try {
+                        java.util.UUID uuid = java.util.UUID.fromString(line.substring(5));
+                        java.util.Optional<?> target = (java.util.Optional<?>) proxy.getClass().getMethod("getPlayer", java.util.UUID.class).invoke(proxy, uuid);
+                        if (target.isEmpty()) continue;
+                        Class<?> component = Class.forName("net.kyori.adventure.text.Component", true, proxy.getClass().getClassLoader());
+                        Object reason = component.getMethod("text", String.class).invoke(null, "Disconnected by network administrator");
+                        target.get().getClass().getMethod("disconnect", component).invoke(target.get(), reason);
+                    } catch (Exception ignored) { }
+                }
             }
         }
     }

@@ -14,6 +14,9 @@ services:
     volumes:
       - panel-data:/data
     stop_grace_period: 90s
+    env_file:
+      - path: ${PANEL_S3_ENV_FILE:-/etc/dokploy/smol-mc-panel/s3.env}
+        required: false
     environment:
       PANEL_DATA_DIR: /data
       # Dokploy (and docker compose) interpolates these from the deployment's .env.

@@ -16,6 +16,7 @@ export class TelemetryCollector {
   private starting?: Promise<void>
   private tokens = new Map<string, string>()
   private metrics = new Map<string, AgentMetrics>()
+  private kicks = new Map<string, { uuid: string; at: number; pid: number }[]>()
   readonly socketPath: string
   constructor(private root: string, private pidFor: (id: string) => number | undefined) { this.socketPath = resolve(root, 'metrics.sock') }
 
@@ -37,8 +38,10 @@ export class TelemetryCollector {
           frame = Buffer.concat([frame, chunk])
           const end = frame.indexOf(10)
           if (end < 0) return
-          this.accept(frame.subarray(0, end).toString('utf8'))
-          socket.end()
+          const id = this.accept(frame.subarray(0, end).toString('utf8'))
+          const queued = id ? (this.kicks.get(id) ?? []).filter((job) => Date.now() - job.at < 30_000 && job.pid === this.pidFor(id)) : []
+          if (id) this.kicks.delete(id)
+          socket.end(queued.map((job) => `kick ${job.uuid}\n`).join(''))
         })
       })
       server.maxConnections = 32
@@ -74,10 +77,13 @@ export class TelemetryCollector {
       if (number(data.networkIn, 1_000_000_000)) value.networkIn = data.networkIn
       if (number(data.networkOut, 1_000_000_000)) value.networkOut = data.networkOut
       if (text(data.serverVersion, 512)) value.serverVersion = data.serverVersion
+      if (text(data.minecraftVersion, 40) && /^[0-9][0-9a-zA-Z.+_-]{1,39}$/u.test(data.minecraftVersion)) value.minecraftVersion = data.minecraftVersion
+      if (data.proxyControl === true) value.proxyControl = true
       if (Array.isArray(data.tps) && data.tps.length === 3 && data.tps.every((item) => number(item, 25))) value.tps = data.tps.map((item: number) => Math.min(20, item))
-      if (Array.isArray(data.players)) value.players = data.players.slice(0, 200).filter((item) => item && text(item.name, 64) && text(item.uuid, 64) && number(item.ping, 1_000_000)).map((item) => ({ name: item.name, uuid: item.uuid, ping: item.ping }))
+      if (Array.isArray(data.players)) value.players = data.players.slice(0, 200).filter((item) => item && text(item.name, 64) && text(item.uuid, 64) && number(item.ping, 1_000_000)).map((item) => ({ name: item.name, uuid: item.uuid, ping: item.ping, ...(text(item.serverId, 64) && /^[a-z0-9][a-z0-9_-]{0,63}$/u.test(item.serverId) ? { serverId: item.serverId } : {}) }))
       if (Array.isArray(data.worlds)) value.worlds = data.worlds.slice(0, 32).filter((item) => item && text(item.name, 128) && number(item.players, 1_000_000) && number(item.entities, 100_000_000) && number(item.chunks, 100_000_000)).map((item) => ({ name: item.name, players: item.players, entities: item.entities, chunks: item.chunks }))
       this.metrics.set(data.serverId, value)
+      return data.serverId
     } catch { /* Reject malformed, unauthenticated, or oversized frames. */ }
   }
 
@@ -86,9 +92,18 @@ export class TelemetryCollector {
     return this.pidFor(id) && value && Date.now() - value.receivedAt < 6000 ? structuredClone(value) : undefined
   }
 
+  kick(id: string, uuid: string) {
+    const pid = this.pidFor(id)
+    if (!pid || !this.latest(id)?.proxyControl) throw new PanelError('Restart the Velocity proxy to enable network-wide kicks, then try again.')
+    if (!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/iu.test(uuid)) throw new PanelError('Invalid player UUID.')
+    const jobs = (this.kicks.get(id) ?? []).filter((job) => Date.now() - job.at < 30_000)
+    if (jobs.length >= 50) throw new PanelError('Wait for pending player disconnects to complete.')
+    this.kicks.set(id, [...jobs, { uuid, at: Date.now(), pid }])
+  }
+
   async close() {
     if (this.server) await new Promise<void>((resolve) => this.server!.close(() => resolve()))
     if (existsSync(this.socketPath) && lstatSync(this.socketPath).isSocket()) unlinkSync(this.socketPath)
-    this.server = undefined; this.starting = undefined; this.metrics.clear()
+    this.server = undefined; this.starting = undefined; this.metrics.clear(); this.kicks.clear()
   }
 }

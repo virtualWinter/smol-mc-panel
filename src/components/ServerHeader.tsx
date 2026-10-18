@@ -14,8 +14,8 @@ export default function ServerHeader({ server, page }: ServerProps & { page: str
         </Stack>
         <Typography variant="caption" color="text.secondary">{server.address}</Typography>
       </Stack>
-      <Tabs value={['', 'files', 'backups', 'settings'].includes(page) ? page : false} variant="scrollable" scrollButtons="auto" aria-label="Server navigation" sx={{ maxWidth: '100%', borderBottom: 1, borderColor: 'divider', minHeight: 34, '& .MuiTab-root': { minHeight: 34, minWidth: 0, px: 1.5, py: 0.75, fontSize: 13 }, '& .MuiTabs-indicator': { height: 2, borderRadius: 1 } }}>
-        {[['', 'Console'], ['files', 'Files'], ['backups', 'Backups'], ['settings', 'Settings']].map(([path, label]) => (
+      <Tabs value={['', 'files', 'plugins', 'backups', 'settings'].includes(page) ? page : false} variant="scrollable" scrollButtons="auto" aria-label="Server navigation" sx={{ maxWidth: '100%', borderBottom: 1, borderColor: 'divider', minHeight: 34, '& .MuiTab-root': { minHeight: 34, minWidth: 0, px: 1.5, py: 0.75, fontSize: 13 }, '& .MuiTabs-indicator': { height: 2, borderRadius: 1 } }}>
+        {[['', 'Console'], ['files', 'Files'], ...(server.kind === 'paper' ? [['plugins', 'Plugins']] : []), ['backups', 'Backups'], ['settings', 'Settings']].map(([path, label]) => (
           <Tab key={path} value={path} label={label} component="a" href={`/${server.id}${path ? `/${path}` : ''}`} />
         ))}
       </Tabs>
