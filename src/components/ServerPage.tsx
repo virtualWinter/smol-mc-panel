@@ -17,8 +17,9 @@ import ServerPlugins from './ServerPlugins'
 export default function ServerPage({ serverId, page }: { serverId: string; page: string }) {
   const { servers, powerServer } = usePanel()
   const [error, setError] = useState('')
+  const [pending, setPending] = useState<string>()
   const server = servers.find((item) => item.id === serverId)
-  const power = (action: 'Start' | 'Stop' | 'Restart') => { setError(''); void powerServer(serverId, action).catch((error: unknown) => setError(String(error))) }
+  const power = (action: 'Start' | 'Stop' | 'Restart') => { setError(''); setPending(action); void powerServer(serverId, action).catch((error: unknown) => setError(String(error))).finally(() => setPending(undefined)) }
 
   return (
     <Stack spacing={3}>
@@ -29,16 +30,17 @@ export default function ServerPage({ serverId, page }: { serverId: string; page:
           <ServerHeader server={server} page={page} />
           {server.startupIssue && <Alert severity="warning" action={<Button href={`/${server.id}/files`} color="inherit">Files</Button>}>{server.startupIssue}</Alert>}
           {server.download && !['complete'].includes(server.download.phase) && (page !== 'settings' || server.download.label?.startsWith('Java')) && <Paper variant="outlined" sx={{ p: 2 }}><DownloadProgress progress={server.download} /></Paper>}
-          {!server.installed && <Alert severity="info">Install {server.jarFile} from Settings or upload it in Files.</Alert>}
+          {!server.installed && page === '' && <Alert severity="info" action={<Button href={`/${server.id}/settings`} color="inherit">Install</Button>}>Server software not installed.</Alert>}
+          {server.installed && !server.eulaAccepted && page === '' && <Alert severity="info" action={<Button href={`/${server.id}/settings`} color="inherit">Review EULA</Button>}>Accept the Minecraft EULA before starting.</Alert>}
            {page === 'plugins' ? <ServerPlugins key={server.id} server={server} /> : page === 'files' ? <ServerFiles server={server} /> : page === 'backups' ? <ServerBackups server={server} /> : page === 'settings' ? <ServerSettings server={server} /> : page !== '' ? <Typography color="text.secondary">Page not found</Typography> : (
           <Stack spacing={2}>
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', md: 'minmax(0, 1fr) 260px' }, gap: 2 }}>
             <Box sx={{ minWidth: 0 }}><ServerConsole server={server} /></Box>
             <Stack spacing={2}>
               <Stack direction="row" spacing={1} aria-label="Power controls" sx={{ '& .MuiButton-root': { flex: 1, minWidth: 0 } }}>
-                <Button size="small" variant="outlined" disabled={Boolean(server.startupIssue)} onClick={() => power('Start')}>Start</Button>
-                <Button size="small" variant="outlined" disabled={Boolean(server.startupIssue)} onClick={() => power('Restart')}>Restart</Button>
-                <Button size="small" variant="outlined" color="error" onClick={() => power('Stop')}>Stop</Button>
+                <Button size="small" variant="outlined" disabled={Boolean(pending || server.startupIssue) || server.status !== 'Offline' || !server.installed || !server.eulaAccepted} onClick={() => power('Start')}>{pending === 'Start' ? 'Starting…' : 'Start'}</Button>
+                <Button size="small" variant="outlined" disabled={Boolean(pending || server.startupIssue) || server.status !== 'Online'} onClick={() => power('Restart')}>{pending === 'Restart' ? 'Restarting…' : 'Restart'}</Button>
+                <Button size="small" variant="outlined" color="error" disabled={Boolean(pending) || !['Online', 'Starting'].includes(server.status)} onClick={() => power('Stop')}>{pending === 'Stop' ? 'Stopping…' : 'Stop'}</Button>
               </Stack>
               <ServerStats server={server} />
             </Stack>

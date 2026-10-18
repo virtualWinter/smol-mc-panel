@@ -24,6 +24,9 @@ const theme = createTheme({
     MuiTextField: { defaultProps: { size: 'small' } },
     MuiTab: { styleOverrides: { root: { minHeight: 38, minWidth: 72, padding: '8px 12px' } } },
     MuiTabs: { styleOverrides: { root: { minHeight: 38 } } },
+    MuiDialogTitle: { styleOverrides: { root: { fontSize: 16, fontWeight: 600, padding: '16px 24px' } } },
+    MuiDialogActions: { styleOverrides: { root: { padding: '16px 24px', gap: 4 } } },
+    MuiAccordion: { styleOverrides: { root: { backgroundImage: 'none' } } },
   },
 })
 
@@ -33,7 +36,7 @@ export function Shell({ children }: { children: ReactNode }) {
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <PanelErrorBoundary>
-        <Container maxWidth="lg" sx={{ py: { xs: 3, sm: 5 }, px: { xs: 2, sm: 4 } }}>{children}</Container>
+        <Container maxWidth="lg" sx={{ py: { xs: 2, sm: 4 }, px: { xs: 2, sm: 4 } }}>{children}</Container>
       </PanelErrorBoundary>
     </ThemeProvider>
   </StrictMode>

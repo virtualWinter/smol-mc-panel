@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Box, Breadcrumbs, Button, InputAdornment, Link, List, ListItemButton, ListItemIcon, ListItemText, Paper, Stack, TextField, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material'
 import ViewListOutlinedIcon from '@mui/icons-material/ViewListOutlined'
 import GridViewOutlinedIcon from '@mui/icons-material/GridViewOutlined'
@@ -8,10 +8,12 @@ import SearchIcon from '@mui/icons-material/Search'
 import useFileManager from './useFileManager'
 import FileEditor from './FileEditor'
 import type { ServerProps, ServerFile } from '../types'
+import { displayDate } from './ui-format'
 
 function FileManager({ server }: ServerProps) {
   const [selected, setSelected] = useState<ServerFile | null>(null)
-  const { entries, filePath, saveFile, readFile, notice, setNotice, target, dropProps, dragProps } = useFileManager(server.id)
+  const { entries, filePath, saveFile, readFile, notice, setNotice, target, dropProps, dragProps, upload, uploading } = useFileManager(server.id)
+  const picker = useRef<HTMLInputElement>(null)
   const path = filePath.split('/').filter(Boolean)
   const [content, setContent] = useState('')
   const [opening, setOpening] = useState(false)
@@ -35,11 +37,13 @@ function FileManager({ server }: ServerProps) {
     <Stack spacing={2.5}>
       <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ justifyContent: 'space-between', alignItems: { sm: 'center' } }}>
         <Breadcrumbs separator="/" aria-label="File path" sx={{ fontSize: 14, lineHeight: '20px', '& .MuiBreadcrumbs-li': { display: 'flex', alignItems: 'center' }, '& .MuiLink-root': { display: 'block', p: 0, lineHeight: '20px', fontFamily: 'inherit', verticalAlign: 'baseline' }, '& .MuiBreadcrumbs-separator': { mx: 0.5, color: 'text.disabled', lineHeight: '20px' } }}>
-          <Link {...dropProps('')} component="button" underline="hover" color={path.length ? 'text.secondary' : 'text.primary'} onClick={() => navigate([])} sx={{ fontSize: 14 }} aria-label="Root directory">{path.length ? 'server' : 'server/'}</Link>
+          <Link {...dropProps('')} component="button" underline="hover" color={path.length ? 'text.secondary' : 'text.primary'} onClick={() => navigate([])} sx={{ fontSize: 14 }} aria-label="Root directory">/</Link>
           {path.map((part, index) => <Link {...dropProps(path.slice(0, index + 1).join('/'))} key={index} component="button" underline="hover" color="text.primary" onClick={() => navigate(path.slice(0, index + 1))} sx={{ fontSize: 14 }}>{part}</Link>)}
         </Breadcrumbs>
         <Stack direction="row" spacing={1}>
-          <TextField placeholder="Search files…" value={search} onChange={(event) => setSearch(event.target.value)} sx={{ width: { xs: '100%', sm: 240 }, minWidth: 0 }} slotProps={{ htmlInput: { 'aria-label': 'Search files' }, input: { startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> } }} />
+          <TextField placeholder="Search files" value={search} onChange={(event) => setSearch(event.target.value)} sx={{ flex: 1, width: { sm: 200 }, minWidth: 0 }} slotProps={{ htmlInput: { 'aria-label': 'Search files' }, input: { startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> } }} />
+          <Button variant="outlined" disabled={uploading} onClick={() => picker.current?.click()}>{uploading ? 'Uploading…' : 'Upload'}</Button>
+          <input ref={picker} type="file" multiple hidden aria-label="Upload files" onChange={(event) => { if (event.target.files) void upload(directory, event.target.files).catch((error: unknown) => setNotice(String(error))); event.target.value = '' }} />
           <ToggleButtonGroup exclusive size="small" value={view} onChange={(_, value: 'list' | 'grid' | null) => { if (value) setView(value) }} aria-label="File view">
             <ToggleButton value="list" aria-label="List view"><ViewListOutlinedIcon fontSize="small" /></ToggleButton>
             <ToggleButton value="grid" aria-label="Grid view"><GridViewOutlinedIcon fontSize="small" /></ToggleButton>
@@ -68,7 +72,7 @@ function FileManager({ server }: ServerProps) {
                 <ListItemText primary={file.name} sx={{ minWidth: 0, maxWidth: '100%' }} slotProps={{ primary: { variant: 'body2', noWrap: true } }} />
               </Stack>
               {view === 'list' && <Typography variant="caption" color="text.secondary" sx={{ px: 1.5 }}>{file.size}</Typography>}
-              {view === 'list' && <Typography variant="caption" color="text.secondary" sx={{ display: { xs: 'none', sm: 'block' }, px: 1.5 }}>{file.modified ?? '—'}</Typography>}
+              {view === 'list' && <Typography variant="caption" color="text.secondary" title={file.modified} sx={{ display: { xs: 'none', sm: 'block' }, px: 1.5 }}>{displayDate(file.modified)}</Typography>}
             </ListItemButton>
           ))}
         </List>

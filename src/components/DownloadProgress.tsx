@@ -7,7 +7,7 @@ export default function DownloadProgress({ progress }: { progress: DownloadProgr
   const percent = progress.total ? Math.min(100, progress.received / progress.total * 100) : 0
   const label = {
     resolving: `Finding ${progress.label ?? 'server'} build…`, downloading: `Downloading ${progress.label ?? 'JAR'}`, verifying: 'Verifying checksums…',
-    extracting: `Extracting ${progress.label ?? 'archive'}…`, installing: `Installing ${progress.label ?? 'JAR'}…`, complete: progress.label ? `${progress.label} installed.` : 'JAR reinstalled. Server remains stopped.', failed: progress.error ?? 'Download failed.',
+    extracting: `Extracting ${progress.label ?? 'archive'}…`, installing: `Installing ${progress.label ?? 'JAR'}…`, complete: progress.label ? `${progress.label} installed` : 'Installed', failed: progress.error ?? 'Download failed.',
   }[progress.phase]
   const active = !['complete', 'failed'].includes(progress.phase)
   return (
@@ -16,7 +16,7 @@ export default function DownloadProgress({ progress }: { progress: DownloadProgr
         <Typography variant="caption" color={progress.phase === 'failed' ? 'error' : 'text.secondary'}>{label}</Typography>
         {progress.phase === 'downloading' && <Typography variant="caption" color="text.secondary">{Math.floor(percent)}%</Typography>}
       </Stack>
-      {(active || progress.phase === 'complete') && <LinearProgress aria-label="Server JAR download progress" variant={progress.phase === 'resolving' ? 'indeterminate' : 'determinate'} value={percent} sx={{ borderRadius: 1, height: 4 }} />}
+      {active && <LinearProgress aria-label="Download progress" variant={!progress.total ? 'indeterminate' : 'determinate'} value={percent} sx={{ borderRadius: 1, height: 4 }} />}
       {progress.phase === 'downloading' && <Typography variant="caption" color="text.secondary">
         {size(progress.received)} / {size(progress.total)}{progress.bytesPerSecond > 0 ? ` · ${size(progress.bytesPerSecond)}/s` : ''}
       </Typography>}

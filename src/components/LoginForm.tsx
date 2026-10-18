@@ -17,8 +17,8 @@ export default function LoginForm() {
       <Stack spacing={2.5}>
         <Typography component="h1" variant="h5" sx={{ fontWeight: 600 }}>Sign in</Typography>
         {error && <Alert severity="error">{error}</Alert>}
-        <TextField required label="Username" autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} slotProps={{ htmlInput: { maxLength: 32 } }} />
-        <TextField required label="Password" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} slotProps={{ htmlInput: { maxLength: 128 } }} />
+        <TextField required disabled={pending} label="Username" autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} slotProps={{ htmlInput: { maxLength: 32 } }} />
+        <TextField required disabled={pending} label="Password" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} slotProps={{ htmlInput: { maxLength: 128 } }} />
         <Button type="submit" variant="contained" disabled={pending}>{pending ? 'Signing in…' : 'Sign in'}</Button>
       </Stack>
     </Paper>

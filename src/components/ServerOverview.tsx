@@ -25,9 +25,9 @@ export default function ServerOverview() {
       <Stack direction="row" spacing={2} sx={{ alignItems: 'center', justifyContent: 'space-between' }}>
         <Typography component="h1" variant="h6" sx={{ fontWeight: 600 }}>Network</Typography>
         <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}><TextField
-          placeholder="Search network…"
+           placeholder="Search servers"
           size="small"
-          sx={{ width: { xs: 180, sm: 240 } }}
+           sx={{ width: { xs: 150, sm: 240 } }}
           value={search}
           onChange={(event) => setSearch(event.target.value)}
           slotProps={{
@@ -38,7 +38,7 @@ export default function ServerOverview() {
       </Stack>
       {error && <Alert severity="error">{error}</Alert>}
       <Stack direction="row" spacing={1}><NetworkServers /><NetworkPlayers /></Stack>
-        <DndContext sensors={sensors} collisionDetection={closestCenter} modifiers={[restrictToVerticalAxis]} onDragEnd={({ active, over }) => { if (over) void reorderServers(String(active.id), String(over.id)).catch((error: unknown) => window.alert(String(error))) }}>
+        <DndContext sensors={sensors} collisionDetection={closestCenter} modifiers={[restrictToVerticalAxis]} onDragEnd={({ active, over }) => { if (over) void reorderServers(String(active.id), String(over.id)).catch((error: unknown) => setError(String(error))) }}>
         <SortableContext items={filtered.map((server) => server.id)} strategy={verticalListSortingStrategy}>
         <Stack spacing={2}>
           {filtered.map((server) => <SortableServerRow key={server.id} server={server} />)}

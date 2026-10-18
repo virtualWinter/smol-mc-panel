@@ -9,6 +9,17 @@ export default function useFileManager(serverId: string) {
   const entries = files[serverId] ?? []
   const [notice, setNotice] = useState('')
   const [target, setTarget] = useState<string | null>(null)
+  const [uploading, setUploading] = useState(false)
+  const upload = async (destination: string, selected: FileList | File[]) => {
+    if (uploading || !selected.length) return
+    setNotice(''); setUploading(true)
+    try {
+      const data = new FormData()
+      for (const file of Array.from(selected)) data.append('files', file)
+      await uploadFiles(serverId, destination, data)
+      setNotice('Uploaded')
+    } finally { setUploading(false) }
+  }
   const accepts = (event: DragEvent) => event.dataTransfer.types.includes(dragType) || event.dataTransfer.types.includes('Files')
   const drop = async (event: DragEvent, destination: string) => {
     event.preventDefault()
@@ -22,9 +33,7 @@ export default function useFileManager(serverId: string) {
         setNotice('Drop individual files; folder uploads are not supported yet.')
         return
       }
-      const data = new FormData()
-      for (const file of event.dataTransfer.files) data.append('files', file)
-      await uploadFiles(serverId, destination, data)
+      await upload(destination, event.dataTransfer.files)
     } catch (error) { setNotice(String(error)) }
   }
   const dropProps = (destination: string) => ({
@@ -45,5 +54,5 @@ export default function useFileManager(serverId: string) {
     onDragStart: (event: DragEvent) => { event.dataTransfer.setData(dragType, path); event.dataTransfer.effectAllowed = 'move' },
     onDragEnd: () => setTarget(null),
   })
-  return { entries, filePath, saveFile, readFile, notice, setNotice, target, dropProps, dragProps }
+  return { entries, filePath, saveFile, readFile, notice, setNotice, target, dropProps, dragProps, upload, uploading }
 }

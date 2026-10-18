@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Alert, Button, MenuItem, Paper, Stack, TextField, Typography } from '@mui/material'
+import { Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, Divider, MenuItem, Paper, Stack, TextField, Typography } from '@mui/material'
 import { usePanel } from '../data/usePanel'
 import type { PluginProject, PluginRelease, ServerProps } from '../types'
 import { reportedMinecraftVersion, reportedProxyVersion } from '../minecraft-version'
@@ -24,6 +24,8 @@ export default function ServerPlugins({ server }: ServerProps) {
   const [selected, setSelected] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const managed = plugins[server.id] ?? []
+  const installed = managed.find((p) => p.source === project?.source && p.project === project?.id)
   useEffect(() => {
     let current = true
     void searchPlugins(server.id, source, browse.query).then((projects) => {
@@ -36,37 +38,50 @@ export default function ServerPlugins({ server }: ServerProps) {
   async function run(operation: () => Promise<void>) { setBusy(true); setError(''); try { await operation() } catch (error) { setError(String(error)) } finally { setBusy(false) } }
   const release = versions.find((v) => v.id === selected)
   async function choose(p: PluginProject) {
-    setProject(p); setSelected(''); setVersionSet({ game, releases: [] })
-    const releases = await pluginVersions(server.id, p.source, p.id, game)
-    setVersionSet({ game, releases }); setSelected(releases[0]?.id ?? '')
+    const targetGame = proxy && p.source === 'modrinth' ? '' : liveVersion ?? manualGame ?? cachedVersion ?? ''
+    if (p.source !== source) { setSource(p.source); setResults([]); setCatalogPending(true) }
+    setProject(p); setSelected(''); setVersionSet({ game: targetGame, releases: [] })
+    const releases = await pluginVersions(server.id, p.source, p.id, targetGame)
+    setVersionSet({ game: targetGame, releases }); setSelected(releases[0]?.id ?? '')
   }
-  return <Stack spacing={2}>
-    <Typography variant="body2" color="text.secondary">{proxy ? 'Velocity proxy plugins' : 'Paper backend plugins'}</Typography>
-    <Alert severity="info">Install trusted plugins only: plugins execute Java code. Changes apply on the next server restart; no hot loading. Required dependencies are listed but not installed automatically.</Alert>
-    <Stack component="form" direction={{ xs: 'column', sm: 'row' }} spacing={1} onSubmit={(event) => {
-      event.preventDefault(); setCatalogPending(true); setCatalogError(''); setError(''); setResults([]); setProject(undefined); setBrowse({ query: query.trim() })
+  return <Stack spacing={2.5}>
+    {error && !project && <Alert severity="error">{error}</Alert>}
+    {managed.length > 0 && <Stack spacing={1}>
+      <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap' }}><Typography variant="subtitle2">Installed</Typography><Typography variant="caption" color="text.secondary">Restart to apply changes</Typography></Stack>
+      <Paper variant="outlined"><Stack divider={<Divider />}>
+        {managed.map((p) => <Stack key={`${p.source}:${p.project}`} direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ p: 1.5, alignItems: { sm: 'center' } }}>
+          <Box sx={{ flex: 1, minWidth: 0 }}><Typography variant="body2" sx={{ overflowWrap: 'anywhere' }}>{p.name.split('/').pop()}</Typography><Typography variant="caption" color="text.secondary">{p.version} · {p.source}</Typography></Box>
+          <Stack direction="row" spacing={1}><Button disabled={busy} onClick={() => void run(() => choose({ source: p.source, id: p.project, name: p.name, description: '' }))}>Update</Button><Button color="error" disabled={busy} onClick={() => { if (window.confirm(`Remove ${p.name}? Config files are kept. Restart to unload it.`)) void run(() => removePlugin(server.id, p.source, p.project)) }}>Remove</Button></Stack>
+        </Stack>)}
+      </Stack></Paper>
+    </Stack>}
+    <Stack component="form" direction={{ xs: 'column', md: 'row' }} spacing={1} onSubmit={(event) => {
+      event.preventDefault(); setCatalogPending(true); setCatalogError(''); setError(''); setResults([]); setBrowse({ query: query.trim() })
     }}>
       <TextField select label="Catalog" value={source} disabled={busy} onChange={(e) => { setSource(e.target.value as PluginProject['source']); setResults([]); setProject(undefined); setCatalogPending(true); setCatalogError(''); setBrowse({ query: query.trim() }) }} sx={{ minWidth: 140 }}><MenuItem value="hangar">Hangar</MenuItem><MenuItem value="modrinth">Modrinth</MenuItem></TextField>
-      {needsVersion && <TextField label={proxy ? 'Velocity version' : 'Minecraft version'} value={game} disabled={busy || Boolean(liveVersion)} onChange={(e) => setManualGame(e.target.value)} placeholder={proxy ? '3.4.0' : '1.21.11'} helperText={liveVersion ? 'Detected by agent' : cachedVersion && manualGame === undefined ? 'Last detected; start server to refresh' : 'Start server to detect automatically'} />}
-      <TextField label="Search plugins" value={query} disabled={busy} onChange={(e) => setQuery(e.target.value)} />
-      <Button type="submit" disabled={busy}>{query.trim() ? 'Search' : 'Popular'}</Button>
+      {needsVersion && <TextField label={proxy ? 'Velocity' : 'Minecraft'} value={game} disabled={busy || Boolean(liveVersion)} onChange={(e) => setManualGame(e.target.value)} placeholder={proxy ? '3.4.0' : '1.21.11'} helperText={liveVersion ? undefined : cachedVersion && manualGame === undefined ? 'Last run' : 'Start server to detect'} slotProps={{ inputLabel: { shrink: true } }} sx={{ minWidth: 120, maxWidth: { md: 190 } }} />}
+      <TextField label="Search plugins" value={query} disabled={busy} onChange={(e) => setQuery(e.target.value)} sx={{ flex: 1 }} />
+      <Button type="submit" disabled={busy} sx={{ alignSelf: { md: 'flex-start' }, minHeight: 40 }}>{query.trim() ? 'Search' : 'Browse'}</Button>
     </Stack>
-    {error && <Alert severity="error">{error}</Alert>}
     {catalogError && <Alert severity="error">{catalogError}</Alert>}
-    <Typography variant="subtitle2">{browse.query ? 'Search results' : 'Popular plugins'}</Typography>
-    {catalogPending && <Typography color="text.secondary" role="status">Loading plugins…</Typography>}
-    {!catalogPending && !catalogError && results.length === 0 && <Typography color="text.secondary">No plugins found.</Typography>}
-    {results.map((p) => <Paper key={p.id} variant="outlined" sx={{ p: 2 }}><Stack direction="row" spacing={2}><Stack sx={{ flex: 1 }}><Typography>{p.name}</Typography><Typography variant="caption" color="text.secondary">{p.description}</Typography></Stack><Button disabled={busy} onClick={() => void run(() => choose(p))}>Versions</Button></Stack></Paper>)}
-    {project && <Paper variant="outlined" sx={{ p: 2 }}><Stack spacing={2}>
-      <Typography>{project.name}</Typography>
-      {!versions.length ? <Typography color="text.secondary">No stable {proxy ? 'Velocity' : 'Paper'} releases{needsVersion ? ' for this version' : ''}.</Typography> : <>
-        <TextField select label="Compatible release" value={selected} disabled={busy} onChange={(e) => setSelected(e.target.value)}>{versions.map((v) => <MenuItem key={v.id} value={v.id}>{v.name}</MenuItem>)}</TextField>
-        {release?.dependencies.length ? <Alert severity="warning">Required dependencies: {release.dependencies.join(', ')}. Install these separately.</Alert> : null}
-        <Button disabled={busy || !selected} onClick={() => { if (window.confirm('Install this plugin release? It runs with full server permissions after restart.')) void run(async () => { await installPlugin(server.id, project.source, project.id, selected, game); setProject(undefined) }) }}>Install / update</Button>
-      </>}
-    </Stack></Paper>}
-    <Typography variant="subtitle2">Panel-managed plugins</Typography>
-    {(plugins[server.id] ?? []).map((p) => <Paper key={`${p.source}:${p.project}`} variant="outlined" sx={{ p: 2 }}><Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}><Typography sx={{ flex: 1 }} variant="body2">{p.name} · {p.version} · {p.source}</Typography><Button disabled={busy} onClick={() => void run(() => choose({ source: p.source, id: p.project, name: p.name, description: '' }))}>Check updates</Button><Button color="error" disabled={busy} onClick={() => { if (window.confirm('Remove the plugin JAR? Its configuration is kept; restart to unload it.')) void run(() => removePlugin(server.id, p.source, p.project)) }}>Remove</Button></Stack></Paper>)}
-    <Typography variant="caption" color="text.secondary">Manually uploaded plugins remain accessible in Files.</Typography>
+    <Stack spacing={1}>
+      <Typography variant="subtitle2">{browse.query ? 'Results' : 'Popular'}</Typography>
+      {catalogPending ? <Typography variant="body2" color="text.secondary" role="status">Loading…</Typography> : !catalogError && results.length === 0 ? <Typography variant="body2" color="text.secondary">No plugins found.</Typography> : null}
+      {results.length > 0 && <Paper variant="outlined"><Stack divider={<Divider />}>
+        {results.map((p) => <Stack key={p.id} direction="row" spacing={2} sx={{ p: 1.5, alignItems: 'center' }}><Box sx={{ flex: 1, minWidth: 0 }}><Typography variant="body2" sx={{ fontWeight: 500 }}>{p.name}</Typography><Typography variant="caption" color="text.secondary" sx={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{p.description}</Typography></Box><Button disabled={busy} onClick={() => void run(() => choose(p))}>Versions</Button></Stack>)}
+      </Stack></Paper>}
+    </Stack>
+    <Dialog open={Boolean(project)} onClose={() => { if (!busy) setProject(undefined) }} fullWidth maxWidth="sm">
+      <DialogTitle>{project?.name}</DialogTitle>
+      <DialogContent><Stack spacing={2} sx={{ pt: 1 }}>
+        {error && <Alert severity="error">{error}</Alert>}
+        {busy && !versions.length ? <Typography role="status">Loading versions…</Typography> : !versions.length ? !error && <Typography color="text.secondary">No compatible stable releases.</Typography> : <>
+          <TextField select label="Version" value={selected} disabled={busy} onChange={(e) => setSelected(e.target.value)}>{versions.map((v) => <MenuItem key={v.id} value={v.id}>{v.name}</MenuItem>)}</TextField>
+          {release?.dependencies.length ? <Alert severity="warning">Install dependencies separately: {release.dependencies.join(', ')}</Alert> : null}
+          <Typography variant="caption" color="text.secondary">Restart required. Only install plugins you trust.</Typography>
+        </>}
+      </Stack></DialogContent>
+      <DialogActions><Button disabled={busy} onClick={() => setProject(undefined)}>Cancel</Button><Button variant="contained" disabled={busy || !selected || !versions.length || selected === installed?.version} onClick={() => { if (project) void run(async () => { await installPlugin(server.id, project.source, project.id, selected, game); setProject(undefined) }) }}>{busy ? 'Installing…' : installed ? 'Update' : 'Install'}</Button></DialogActions>
+    </Dialog>
   </Stack>
 }
