@@ -35,12 +35,13 @@ async function json(url: string) { return JSON.parse((await request(url)).toStri
 export async function searchPlugins(source: Source, query: string, platform: PluginPlatform = 'paper'): Promise<PluginProject[]> {
   platformCheck(platform)
   sourceCheck(source)
-  if (typeof query !== 'string' || query.trim().length < 2 || query.length > 100) throw new PanelError('Enter 2–100 search characters.')
+  if (typeof query !== 'string' || query.length > 100 || query.trim().length === 1) throw new PanelError('Enter 2–100 search characters, or leave search empty to browse popular plugins.')
+  query = query.trim()
   if (source === 'modrinth') {
-    const data = await json(`https://api.modrinth.com/v2/search?limit=10&query=${encodeURIComponent(query)}&facets=${encodeURIComponent(JSON.stringify([['project_type:plugin'], [`categories:${platform}`]]))}`)
+    const data = await json(`https://api.modrinth.com/v2/search?limit=10&${query ? `query=${encodeURIComponent(query)}` : 'index=downloads'}&facets=${encodeURIComponent(JSON.stringify([['project_type:plugin'], [`categories:${platform}`]]))}`)
     return (data.hits ?? []).slice(0, 10).map((p: Record<string, string>) => ({ source, id: p.project_id, name: String(p.title).slice(0, 160), description: String(p.description).slice(0, 500) }))
   }
-  const data = await json(`https://hangar.papermc.io/api/v1/projects?limit=10&query=${encodeURIComponent(query)}&platform=${platform.toUpperCase()}`)
+  const data = await json(`https://hangar.papermc.io/api/v1/projects?limit=10&${query ? `query=${encodeURIComponent(query)}` : 'sort=-downloads'}&platform=${platform.toUpperCase()}`)
   return (data.result ?? []).slice(0, 10).map((p: { namespace: { owner: string; slug: string }; name: string; description: string }) => ({ source, id: `${p.namespace.owner}/${p.namespace.slug}`, name: String(p.name).slice(0, 160), description: String(p.description).slice(0, 500) }))
 }
 export async function pluginReleases(source: Source, project: string, gameVersion: string, platform: PluginPlatform = 'paper'): Promise<Release[]> {

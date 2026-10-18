@@ -6,6 +6,35 @@ import test from 'node:test'
 import { Plugins, pluginReleases, searchPlugins } from '../src/server/plugins'
 
 const jar = Buffer.from('PK\x03\x04plugin-bytes')
+test('empty search browses popular plugins for the selected catalog and server platform', async () => {
+  const original = globalThis.fetch
+  let calls = 0
+  try {
+    globalThis.fetch = async (input) => {
+      const url = new URL(String(input)); calls++
+      assert.equal(url.searchParams.has('query'), false)
+      if (url.hostname === 'api.modrinth.com') {
+        assert.equal(url.searchParams.get('index'), 'downloads')
+        const facets = JSON.parse(url.searchParams.get('facets')!) as string[][]
+        assert.ok(facets.some((values) => values.includes('categories:paper') || values.includes('categories:velocity')))
+        return Response.json({ hits: [{ project_id: 'popular', title: 'Popular plugin', description: 'Catalog result' }] })
+      }
+      assert.equal(url.searchParams.get('sort'), '-downloads')
+      assert.ok(['PAPER', 'VELOCITY'].includes(url.searchParams.get('platform')!))
+      return Response.json({ result: [{ namespace: { owner: 'Owner', slug: 'Popular' }, name: 'Popular plugin', description: 'Catalog result' }] })
+    }
+    for (const source of ['modrinth', 'hangar'] as const) {
+      for (const platform of ['paper', 'velocity'] as const) {
+        assert.equal((await searchPlugins(source, '', platform))[0].name, 'Popular plugin')
+        assert.equal((await searchPlugins(source, '   ', platform))[0].name, 'Popular plugin')
+      }
+    }
+    assert.equal(calls, 8)
+    await assert.rejects(searchPlugins('modrinth', 'x'), /2–100/u)
+    await assert.rejects(searchPlugins('hangar', 'x'.repeat(101)), /2–100/u)
+    assert.equal(calls, 8)
+  } finally { globalThis.fetch = original }
+})
 test('Velocity search and installation select Velocity releases and never the Paper artifact', async () => {
   const root = mkdtempSync('/tmp/opencode/velocity-plugin-'), original = globalThis.fetch
   const velocityJar = Buffer.from('PK\x03\x04velocity-only')
