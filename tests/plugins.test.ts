@@ -6,6 +6,51 @@ import test from 'node:test'
 import { Plugins, pluginReleases, searchPlugins } from '../src/server/plugins'
 
 const jar = Buffer.from('PK\x03\x04plugin-bytes')
+test('Velocity search and installation select Velocity releases and never the Paper artifact', async () => {
+  const root = mkdtempSync('/tmp/opencode/velocity-plugin-'), original = globalThis.fetch
+  const velocityJar = Buffer.from('PK\x03\x04velocity-only')
+  const calls: string[] = []
+  try {
+    const directory = resolve(root, 'proxy'); mkdirSync(directory)
+    globalThis.fetch = async (input) => {
+      const url = new URL(String(input)); calls.push(url.href)
+      if (url.hostname === 'cdn.modrinth.com' || url.hostname === 'hangarcdn.papermc.io') {
+        assert.ok(url.pathname.includes('velocity'), 'must download the proxy artifact')
+        return new Response(Uint8Array.from(velocityJar))
+      }
+      if (url.pathname.endsWith('/search')) {
+        assert.ok(url.searchParams.get('facets')?.includes('categories:velocity'))
+        return Response.json({ hits: [] })
+      }
+      if (url.hostname === 'api.modrinth.com') {
+        assert.deepEqual(JSON.parse(url.searchParams.get('loaders')!), ['velocity'])
+        assert.equal(url.searchParams.has('game_versions'), false, 'Minecraft versions must not be confused with proxy versions')
+        return Response.json([
+          { id: 'paper', version_type: 'release', loaders: ['paper'], game_versions: ['1.21.11'], files: [] },
+          { id: 'velocity', name: 'Proxy release', version_type: 'release', loaders: ['velocity'], game_versions: ['1.21.11'], files: [{ primary: true, url: 'https://cdn.modrinth.com/velocity.jar', hashes: { sha512: createHash('sha512').update(velocityJar).digest('hex') } }], dependencies: [] },
+        ])
+      }
+      if (url.pathname.endsWith('/projects')) { assert.equal(url.searchParams.get('platform'), 'VELOCITY'); return Response.json({ result: [] }) }
+      assert.equal(url.searchParams.get('platform'), 'VELOCITY')
+      assert.equal(url.searchParams.get('platformVersion'), '4.2.1')
+      return Response.json({ result: [{ name: 'both-platforms', channel: { name: 'Release' }, platformDependencies: { PAPER: ['1.21.11'], VELOCITY: ['4.2.1'] }, pluginDependencies: { VELOCITY: [{ required: true, name: 'Proxy dependency' }], PAPER: [{ required: true, name: 'Backend dependency' }] }, downloads: {
+        PAPER: { downloadUrl: 'https://hangarcdn.papermc.io/paper.jar', fileInfo: { sha256Hash: '0'.repeat(64) } },
+        VELOCITY: { downloadUrl: 'https://hangarcdn.papermc.io/velocity.jar', fileInfo: { sha256Hash: createHash('sha256').update(velocityJar).digest('hex') } },
+      } }] })
+    }
+    await searchPlugins('modrinth', 'demo', 'velocity')
+    await searchPlugins('hangar', 'demo', 'velocity')
+    const plugins = new Plugins(root)
+    await assert.rejects(plugins.install('proxy', directory, 'modrinth', 'demo', 'paper', '', 'velocity'))
+    await plugins.install('proxy', directory, 'modrinth', 'demo', 'velocity', '', 'velocity')
+    const releases = await pluginReleases('hangar', 'Owner/Demo', '4.2.1', 'velocity')
+    assert.deepEqual(releases[0].dependencies, ['Proxy dependency'])
+    await plugins.install('proxy', directory, 'hangar', 'Owner/Demo', 'both-platforms', '4.2.1', 'velocity')
+    assert.equal(plugins.list('proxy').length, 2)
+    for (const plugin of plugins.list('proxy')) assert.deepEqual(readFileSync(resolve(directory, 'plugins', plugin.file)), velocityJar)
+    assert.ok(calls.length > 0)
+  } finally { globalThis.fetch = original; rmSync(root, { recursive: true, force: true }) }
+})
 test('Modrinth installs verify checksums, restrict compatibility, and protect modified files', async () => {
   const root = mkdtempSync('/tmp/opencode/plugin-install-'), original = globalThis.fetch
   let corrupt = false, badHost = false

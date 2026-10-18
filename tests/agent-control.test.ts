@@ -28,6 +28,8 @@ public class ControlMain {
     public void disconnect(Component reason) { System.out.println("DISCONNECTED"); }
   }
   public static class Proxy {
+    public static class Version { public String getVersion() { return "4.2.1-SNAPSHOT"; } }
+    public Version getVersion() { return new Version(); }
     final Player player = new Player();
     public int getPlayerCount() { return 1; }
     public Collection<Player> getAllPlayers() { return List.of(player); }
@@ -48,6 +50,7 @@ public class ControlMain {
     child.stderr!.on('data', (chunk) => { errors += chunk })
     for (let i = 0; i < 60 && !collector.latest('proxy')?.proxyControl; i++) await delay(100)
     assert.equal(collector.latest('proxy')?.players?.[0].name, 'Example', errors)
+    assert.equal(collector.latest('proxy')?.proxyVersion, '4.2.1-SNAPSHOT')
     collector.kick('proxy', '11111111-1111-1111-1111-111111111111')
     for (let i = 0; i < 60 && !output.includes('DISCONNECTED'); i++) await delay(100)
     assert.ok(output.includes('DISCONNECTED'), errors || 'Java bridge did not disconnect the selected UUID')

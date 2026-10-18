@@ -30,7 +30,7 @@ export default function ServerPage({ serverId, page }: { serverId: string; page:
           {server.startupIssue && <Alert severity="warning" action={<Button href={`/${server.id}/files`} color="inherit">Files</Button>}>{server.startupIssue}</Alert>}
           {server.download && !['complete'].includes(server.download.phase) && (page !== 'settings' || server.download.label?.startsWith('Java')) && <Paper variant="outlined" sx={{ p: 2 }}><DownloadProgress progress={server.download} /></Paper>}
           {!server.installed && <Alert severity="info">Install {server.jarFile} from Settings or upload it in Files.</Alert>}
-           {page === 'plugins' && server.kind === 'paper' ? <ServerPlugins server={server} /> : page === 'files' ? <ServerFiles server={server} /> : page === 'backups' ? <ServerBackups server={server} /> : page === 'settings' ? <ServerSettings server={server} /> : page !== '' ? <Typography color="text.secondary">Page not found</Typography> : (
+           {page === 'plugins' ? <ServerPlugins server={server} /> : page === 'files' ? <ServerFiles server={server} /> : page === 'backups' ? <ServerBackups server={server} /> : page === 'settings' ? <ServerSettings server={server} /> : page !== '' ? <Typography color="text.secondary">Page not found</Typography> : (
           <Stack spacing={2}>
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', md: 'minmax(0, 1fr) 260px' }, gap: 2 }}>
             <Box sx={{ minWidth: 0 }}><ServerConsole server={server} /></Box>

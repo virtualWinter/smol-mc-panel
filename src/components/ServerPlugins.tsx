@@ -2,15 +2,18 @@ import { useState } from 'react'
 import { Alert, Button, MenuItem, Paper, Stack, TextField, Typography } from '@mui/material'
 import { usePanel } from '../data/usePanel'
 import type { PluginProject, PluginRelease, ServerProps } from '../types'
-import { reportedMinecraftVersion } from '../minecraft-version'
+import { reportedMinecraftVersion, reportedProxyVersion } from '../minecraft-version'
 
 export default function ServerPlugins({ server }: ServerProps) {
   const { plugins, searchPlugins, pluginVersions, installPlugin, removePlugin } = usePanel()
   const [source, setSource] = useState<PluginProject['source']>('modrinth')
   const [query, setQuery] = useState('')
-  const liveVersion = reportedMinecraftVersion(server.telemetry)
+  const proxy = server.kind === 'velocity'
+  const needsVersion = !proxy || source === 'hangar'
+  const liveVersion = proxy ? reportedProxyVersion(server.telemetry) : reportedMinecraftVersion(server.telemetry)
+  const cachedVersion = proxy ? server.proxyVersion : server.minecraftVersion
   const [manualGame, setManualGame] = useState<string>()
-  const game = liveVersion ?? manualGame ?? server.minecraftVersion ?? ''
+  const game = needsVersion ? liveVersion ?? manualGame ?? cachedVersion ?? '' : ''
   const [results, setResults] = useState<PluginProject[]>([])
   const [project, setProject] = useState<PluginProject>()
   const [versionSet, setVersionSet] = useState<{ game: string; releases: PluginRelease[] }>({ game: '', releases: [] })
@@ -26,10 +29,11 @@ export default function ServerPlugins({ server }: ServerProps) {
     setVersionSet({ game, releases }); setSelected(releases[0]?.id ?? '')
   }
   return <Stack spacing={2}>
+    <Typography variant="body2" color="text.secondary">{proxy ? 'Velocity proxy plugins' : 'Paper backend plugins'}</Typography>
     <Alert severity="info">Install trusted plugins only: plugins execute Java code. Changes apply on the next server restart; no hot loading. Required dependencies are listed but not installed automatically.</Alert>
     <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
       <TextField select label="Catalog" value={source} disabled={busy} onChange={(e) => { setSource(e.target.value as PluginProject['source']); setResults([]); setProject(undefined) }} sx={{ minWidth: 140 }}><MenuItem value="modrinth">Modrinth</MenuItem><MenuItem value="hangar">Hangar</MenuItem></TextField>
-      <TextField label="Minecraft version" value={game} disabled={busy || Boolean(liveVersion)} onChange={(e) => setManualGame(e.target.value)} placeholder="1.21.11" helperText={liveVersion ? 'Detected by agent' : server.minecraftVersion && manualGame === undefined ? 'Last detected; start server to refresh' : 'Start server to detect automatically'} />
+      {needsVersion && <TextField label={proxy ? 'Velocity version' : 'Minecraft version'} value={game} disabled={busy || Boolean(liveVersion)} onChange={(e) => setManualGame(e.target.value)} placeholder={proxy ? '3.4.0' : '1.21.11'} helperText={liveVersion ? 'Detected by agent' : cachedVersion && manualGame === undefined ? 'Last detected; start server to refresh' : 'Start server to detect automatically'} />}
       <TextField label="Search plugins" value={query} disabled={busy} onChange={(e) => setQuery(e.target.value)} />
       <Button disabled={busy} onClick={() => void run(async () => { setResults(await searchPlugins(server.id, source, query)); setProject(undefined) })}>Search</Button>
     </Stack>
@@ -37,7 +41,7 @@ export default function ServerPlugins({ server }: ServerProps) {
     {results.map((p) => <Paper key={p.id} variant="outlined" sx={{ p: 2 }}><Stack direction="row" spacing={2}><Stack sx={{ flex: 1 }}><Typography>{p.name}</Typography><Typography variant="caption" color="text.secondary">{p.description}</Typography></Stack><Button disabled={busy} onClick={() => void run(() => choose(p))}>Versions</Button></Stack></Paper>)}
     {project && <Paper variant="outlined" sx={{ p: 2 }}><Stack spacing={2}>
       <Typography>{project.name}</Typography>
-      {!versions.length ? <Typography color="text.secondary">No stable Paper releases for this Minecraft version.</Typography> : <>
+      {!versions.length ? <Typography color="text.secondary">No stable {proxy ? 'Velocity' : 'Paper'} releases{needsVersion ? ' for this version' : ''}.</Typography> : <>
         <TextField select label="Compatible release" value={selected} disabled={busy} onChange={(e) => setSelected(e.target.value)}>{versions.map((v) => <MenuItem key={v.id} value={v.id}>{v.name}</MenuItem>)}</TextField>
         {release?.dependencies.length ? <Alert severity="warning">Required dependencies: {release.dependencies.join(', ')}. Install these separately.</Alert> : null}
         <Button disabled={busy || !selected} onClick={() => { if (window.confirm('Install this plugin release? It runs with full server permissions after restart.')) void run(async () => { await installPlugin(server.id, project.source, project.id, selected, game); setProject(undefined) }) }}>Install / update</Button>

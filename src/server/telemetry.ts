@@ -77,6 +77,7 @@ export class TelemetryCollector {
       if (number(data.networkIn, 1_000_000_000)) value.networkIn = data.networkIn
       if (number(data.networkOut, 1_000_000_000)) value.networkOut = data.networkOut
       if (text(data.serverVersion, 512)) value.serverVersion = data.serverVersion
+      if (text(data.proxyVersion, 128)) value.proxyVersion = data.proxyVersion
       if (text(data.minecraftVersion, 40) && /^[0-9][0-9a-zA-Z.+_-]{1,39}$/u.test(data.minecraftVersion)) value.minecraftVersion = data.minecraftVersion
       if (data.proxyControl === true) value.proxyControl = true
       if (Array.isArray(data.tps) && data.tps.length === 3 && data.tps.every((item) => number(item, 25))) value.tps = data.tps.map((item: number) => Math.min(20, item))

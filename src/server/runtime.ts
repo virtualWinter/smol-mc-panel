@@ -23,7 +23,7 @@ import { Backups } from './backups'
 import { Plugins, searchPlugins, pluginReleases } from './plugins'
 import { Players, validatePlayerAction, type PlayerAction } from './players'
 import { readJson, saveJson } from './json-store'
-import { reportedMinecraftVersion } from '../minecraft-version'
+import { reportedMinecraftVersion, reportedProxyVersion } from '../minecraft-version'
 
 export class NetworkRuntime {
   private backupService: Backups
@@ -32,6 +32,7 @@ export class NetworkRuntime {
   private backupTimer: ReturnType<typeof setInterval>
   private closing = false
   private minecraftVersions: Record<string, string>
+  private proxyVersions: Record<string, string>
   configs: ServerConfig[]
   readonly manager: ProcessManager
   private metrics: Record<string, MetricHistory> = {}
@@ -66,6 +67,7 @@ export class NetworkRuntime {
     }
     this.configs = loadConfig(root)
     this.minecraftVersions = readJson(resolve(root, 'minecraft-versions.json'), {})
+    this.proxyVersions = readJson(resolve(root, 'proxy-versions.json'), {})
     for (const config of this.configs) serverDirectory(root, config.workingDirectory)
     provisionNetwork(root, this.configs)
     try { this.ticksPerSecond = Number(execFileSync('getconf', ['CLK_TCK'], { encoding: 'utf8', timeout: 1000 })) || 100 } catch { /* Linux normally uses 100 clock ticks. */ }
@@ -336,6 +338,11 @@ export class NetworkRuntime {
         const history = this.metrics[config.id]
         const agent = this.telemetry.latest(config.id)
         const gameVersion = reportedMinecraftVersion(agent)
+        const proxyVersion = reportedProxyVersion(agent)
+        if (config.kind === 'velocity' && proxyVersion && this.proxyVersions[config.id] !== proxyVersion) {
+          this.proxyVersions[config.id] = proxyVersion
+          saveJson(resolve(this.root, 'proxy-versions.json'), this.proxyVersions)
+        }
         if (config.kind === 'paper' && gameVersion && this.minecraftVersions[config.id] !== gameVersion) {
           this.minecraftVersions[config.id] = gameVersion
           saveJson(resolve(this.root, 'minecraft-versions.json'), this.minecraftVersions)
@@ -366,20 +373,18 @@ export class NetworkRuntime {
   async refreshBackups(id: string) { await this.backupService.refresh(id) }
   saveBackupSchedule(id: string, enabled: boolean, hour: number, retain: number) { this.backupService.schedule(id, enabled, hour, retain) }
 
-  private paper(id: string) { if (this.config(id).kind !== 'paper') throw new PanelError('Plugin management is available for Paper backends only.') }
-  async searchPlugins(id: string, source: PluginProject['source'], query: string) { this.paper(id); return searchPlugins(source, query) }
+  async searchPlugins(id: string, source: PluginProject['source'], query: string) { return searchPlugins(source, query, this.config(id).kind) }
   async pluginVersions(id: string, source: PluginProject['source'], project: string, gameVersion: string) {
-    this.paper(id)
-    return (await pluginReleases(source, project, gameVersion)).map(({ id, name, gameVersions, dependencies }) => ({ id, name, gameVersions, dependencies }))
+    return (await pluginReleases(source, project, gameVersion, this.config(id).kind)).map(({ id, name, gameVersions, dependencies }) => ({ id, name, gameVersions, dependencies }))
   }
   async installPlugin(id: string, source: PluginProject['source'], project: string, version: string, gameVersion: string) {
-    this.paper(id)
-    const actual = reportedMinecraftVersion(this.telemetry.latest(id))
-    if (actual && actual !== gameVersion) throw new PanelError(`The running server reports Minecraft ${actual}. Choose that version.`)
-    await this.withFileWrite(id, () => this.pluginService.install(id, this.directory(id), source, project, version, gameVersion))
+    const platform = this.config(id).kind
+    const actual = platform === 'paper' ? reportedMinecraftVersion(this.telemetry.latest(id)) : source === 'hangar' ? reportedProxyVersion(this.telemetry.latest(id)) : undefined
+    if (actual && actual !== gameVersion) throw new PanelError(`The running server reports ${platform === 'paper' ? 'Minecraft' : 'Velocity'} ${actual}. Choose that version.`)
+    await this.withFileWrite(id, () => this.pluginService.install(id, this.directory(id), source, project, version, gameVersion, platform))
   }
   async removePlugin(id: string, source: PluginProject['source'], project: string) {
-    this.paper(id); await this.withFileWrite(id, () => this.pluginService.remove(id, this.directory(id), source, project))
+    this.config(id); await this.withFileWrite(id, () => this.pluginService.remove(id, this.directory(id), source, project))
   }
 
   private playerTargets() {
@@ -423,7 +428,7 @@ export class NetworkRuntime {
     const servers: Server[] = this.configs.map((config) => {
       const item = this.manager.get(config.id), history = this.metrics[config.id], players = this.playerCounts.get(config.id)
       const source = installedSource(resolve(this.root, 'installations', `${config.id}.json`), config.kind, config.jarFile)
-      return { ...config, minecraftVersion: reportedMinecraftVersion(this.telemetry.latest(config.id)) ?? this.minecraftVersions[config.id], telemetry: this.telemetry.latest(config.id), startupIssue: proxyStartupIssue(config.kind, this.directory(config.id)), download: this.downloads[config.id] ? { ...this.downloads[config.id] } : undefined, jarVersion: source ? `${source.version} (build ${source.build})` : undefined, installed: this.installed(config.id), eulaAccepted: this.eulaAccepted(config.id), status: item.status, logs: [...item.logs], logOffset: item.logCount - item.logs.length, cpu: history.cpu.length ? `${history.cpu.at(-1)!.toFixed(1)}%` : '—', memory: history.ram.length ? `${history.ram.at(-1)!.toFixed(0)} / ${config.maxMemory} MiB` : `— / ${config.maxMemory} MiB`, players: players ? `${players.online} / ${players.max}` : '—' }
+      return { ...config, proxyVersion: reportedProxyVersion(this.telemetry.latest(config.id)) ?? this.proxyVersions[config.id], minecraftVersion: reportedMinecraftVersion(this.telemetry.latest(config.id)) ?? this.minecraftVersions[config.id], telemetry: this.telemetry.latest(config.id), startupIssue: proxyStartupIssue(config.kind, this.directory(config.id)), download: this.downloads[config.id] ? { ...this.downloads[config.id] } : undefined, jarVersion: source ? `${source.version} (build ${source.build})` : undefined, installed: this.installed(config.id), eulaAccepted: this.eulaAccepted(config.id), status: item.status, logs: [...item.logs], logOffset: item.logCount - item.logs.length, cpu: history.cpu.length ? `${history.cpu.at(-1)!.toFixed(1)}%` : '—', memory: history.ram.length ? `${history.ram.at(-1)!.toFixed(0)} / ${config.maxMemory} MiB` : `— / ${config.maxMemory} MiB`, players: players ? `${players.online} / ${players.max}` : '—' }
     })
     let files: PanelState['files'] = {}
     if (serverId && this.configs.some((server) => server.id === serverId) && request.pathname.endsWith('/files')) {
@@ -434,7 +439,7 @@ export class NetworkRuntime {
     const networkPlayers = proxyPlayers ? proxyPlayers.map((p) => ({ ...p, serverId: p.serverId ?? 'proxy' })) : servers.filter((s) => s.kind === 'paper').flatMap((s) => (s.telemetry?.players ?? []).map((p) => ({ ...p, serverId: s.id })))
     return { servers, files, filePath, backups: Object.fromEntries(this.configs.map((config) => [config.id, this.backupService.list(config.id)])), metrics: structuredClone(this.metrics), javaVersions,
       backupSchedules: structuredClone(this.backupService.schedules), backupJobs: [...this.backupJobs], s3Enabled: Boolean(this.backupService.s3),
-      playerPolicy: structuredClone(this.playerService.policy), networkPlayers, plugins: Object.fromEntries(this.configs.filter((s) => s.kind === 'paper').map((s) => [s.id, this.pluginService.list(s.id)])),
+      playerPolicy: structuredClone(this.playerService.policy), networkPlayers, plugins: Object.fromEntries(this.configs.map((s) => [s.id, this.pluginService.list(s.id)])),
     }
   }
 

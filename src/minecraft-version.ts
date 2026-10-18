@@ -5,3 +5,8 @@ export function reportedMinecraftVersion(metrics?: { minecraftVersion?: string; 
   return text.match(/\bMC:\s*(\d+\.\d+(?:\.\d+)?)/u)?.[1]
     ?? text.match(/^(?:git-Paper-)?(\d+\.\d+(?:\.\d+)?)(?:-|\s|$)/u)?.[1]
 }
+
+/** Hangar declares proxy compatibility against Velocity versions, not Minecraft versions. */
+export function reportedProxyVersion(metrics?: { proxyVersion?: string }): string | undefined {
+  return metrics?.proxyVersion?.match(/^(\d+\.\d+(?:\.\d+)?)(?:-|\s|$)/u)?.[1]
+}

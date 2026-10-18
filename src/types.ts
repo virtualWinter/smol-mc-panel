@@ -3,6 +3,7 @@ export interface Server {
   installed: boolean
   jarVersion?: string
   minecraftVersion?: string
+  proxyVersion?: string
   download?: DownloadProgressState
   startupIssue?: string
   telemetry?: AgentMetrics
@@ -70,6 +71,7 @@ export interface AgentMetrics {
   onlinePlayers?: number
   maxPlayers?: number
   serverVersion?: string
+  proxyVersion?: string
   minecraftVersion?: string
   proxyControl?: boolean
   players?: { name: string; uuid: string; ping: number; serverId?: string }[]

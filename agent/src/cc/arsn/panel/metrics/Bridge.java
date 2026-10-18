@@ -156,6 +156,8 @@ public final class Bridge {
             Map<String, Object> latest = paper;
             if (latest != null && System.currentTimeMillis() - paperAt < 6000) result.putAll(latest);
         } else if (proxy != null) {
+            try { result.put("proxyVersion", call(call(proxy, "getVersion"), "getVersion")); }
+            catch (Exception ignored) { }
             try { result.put("onlinePlayers", call(proxy, "getPlayerCount")); }
             catch (Exception ignored) { }
             result.put("proxyControl", true);
