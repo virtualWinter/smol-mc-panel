@@ -22,7 +22,10 @@ COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/vite.config.ts ./vite.config.ts
 # The runtime compiles the internal metrics agent from these sources on first start.
 COPY --from=build /app/agent ./agent
-RUN mkdir -p /data && chown node:node /data && chmod 700 /data
+# Runtime stage runs as `node`; vite preview compiles its config into these cache dirs.
+RUN mkdir -p /data /app/node_modules/.vite-temp /app/node_modules/.vite \
+  && chown -R node:node /data /app/node_modules/.vite-temp /app/node_modules/.vite \
+  && chmod 700 /data /app/node_modules/.vite-temp /app/node_modules/.vite
 USER node
 VOLUME /data
 ENV PANEL_DATA_DIR=/data

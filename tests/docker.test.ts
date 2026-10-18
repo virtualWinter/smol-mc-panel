@@ -18,6 +18,7 @@ test('Docker packaging matches the application runtime layout', () => {
   const entry = dockerfile.match(/ENTRYPOINT \["node", "(.+?)"/u)![1]
   assert.ok(existsSync(entry), 'entrypoint binary exists for the built bundle')
   assert.match(dockerfile, /COPY --from=build \/app\/vite\.config\.ts/u, 'preview runtime loads the RSC plugin config')
+  assert.match(dockerfile, /\.vite-temp/u, 'runtime creates writable vite cache directories for the unprivileged user')
   for (const required of ['COPY --from=build /app/dist ', 'COPY --from=build /app/agent ', 'USER node', 'PANEL_DATA_DIR=/data', '"preview"', '--host', '0.0.0.0']) {
     assert.ok(dockerfile.includes(required), `Dockerfile contains ${required}`)
   }
