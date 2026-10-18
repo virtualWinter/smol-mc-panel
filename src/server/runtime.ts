@@ -89,6 +89,7 @@ export class NetworkRuntime {
     return config
   }
 
+  /** Strict gate: the server must be stopped and idle for restarts, settings, EULA, reinstalls, and backups. */
   assertWritable(id: string) {
     this.config(id)
     const item = this.manager.get(id)
@@ -97,6 +98,14 @@ export class NetworkRuntime {
 
   async withWrite<T>(id: string, operation: () => T | Promise<T>): Promise<T> {
     this.assertWritable(id)
+    this.writeJobs.add(id)
+    try { return await operation() } finally { this.writeJobs.delete(id) }
+  }
+
+  /** Config, plugin, and file writes stay allowed while the server runs; only concurrent writes or a running backup exclude. */
+  async withFileWrite<T>(id: string, operation: () => T | Promise<T>): Promise<T> {
+    this.config(id)
+    if (this.backupJobs.has(id) || this.writeJobs.has(id)) throw new PanelError('Wait for other file operations or backups to finish first.')
     this.writeJobs.add(id)
     try { return await operation() } finally { this.writeJobs.delete(id) }
   }

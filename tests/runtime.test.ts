@@ -1,10 +1,36 @@
 import assert from 'node:assert/strict'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import test from 'node:test'
 import { NetworkRuntime } from '../src/server/runtime'
 import { proxyConfig, saveConfig } from '../src/server/config'
+import { writeText } from '../src/server/files'
 import { defaults } from './helpers'
+
+test('config, plugin, and file writes stay allowed while the server runs; strict operations still require a stop', async () => {
+  const root = mkdtempSync('/tmp/opencode/hot-files-runtime-')
+  saveConfig(root, defaults())
+  const runtime = new NetworkRuntime(root, false)
+  try {
+    const processes = (runtime as unknown as { manager: { processes: Map<string, Record<string, unknown> & { child?: { pid: number } } > } }).manager.processes
+    const proxy = processes.get('proxy') ?? (processes.set('proxy', { status: 'Online', logs: [], logCount: 0, intentionalStop: false, restarts: [] }), processes.get('proxy')!)
+    proxy.child = { pid: process.pid }
+    // While "running": file/plugin writes go through the relaxed gate.
+    mkdirSync(resolve(root, 'servers/proxy/plugins'), { recursive: true })
+    writeFileSync(resolve(root, 'servers/proxy/plugins/hot.yml'), 'cold')
+    await runtime.withFileWrite('proxy', () => writeText(runtime.directory('proxy'), 'plugins/hot.yml', 'warm'))
+    assert.equal(readFileSync(resolve(root, 'servers/proxy/plugins/hot.yml'), 'utf8'), 'warm')
+    assert.throws(() => runtime.assertWritable('proxy'), /Stop the server/u)
+    await assert.rejects(runtime.createBackup('proxy'), /Stop the server/u)
+    // The relaxed gate still serializes against concurrent writes and backups.
+    const internal = runtime as unknown as { writeJobs: Set<string> }
+    internal.writeJobs.add('proxy')
+    await assert.rejects(runtime.withFileWrite('proxy', () => Promise.resolve()), /other file operations/u)
+    internal.writeJobs.delete('proxy')
+    proxy.child = undefined
+    assert.doesNotThrow(() => runtime.assertWritable('proxy'))
+    } finally { await runtime.shutdown(); rmSync(root, { recursive: true, force: true }) }
+})
 
 test('new network generates secure forwarding, requires JARs and EULA, and creates actual archives', async () => {
   const root = mkdtempSync('/tmp/opencode/network-runtime-')
