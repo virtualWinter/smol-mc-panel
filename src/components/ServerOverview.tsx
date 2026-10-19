@@ -23,7 +23,7 @@ import DroppableGroup from './DroppableGroup'
 interface Group { name: string; servers: ReturnType<typeof usePanel>['servers'] }
 
 export default function ServerOverview() {
-  const { servers, reorderServers, saveSettings } = usePanel()
+  const { servers, reorderServers, saveSettings, setGroupOrder, groupOrder } = usePanel()
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }))
   const [search, setSearch] = useState('')
   const [error, setError] = useState('')
@@ -40,13 +40,14 @@ export default function ServerOverview() {
       if (!map.has(key)) map.set(key, [])
       map.get(key)!.push(server)
     }
-    const keys = [...map.keys()].sort((a, b) => {
-      if (a === '' && b !== '') return 1
-      if (b === '' && a !== '') return -1
-      return a.localeCompare(b)
-    })
-    return keys.map((name) => ({ name, servers: map.get(name)! }))
-  }, [backends])
+    const keys = [...map.keys()]
+    // Apply persisted folder order: known groups first (in order), then remaining alphabetically, ungrouped last.
+    const ordered: string[] = []
+    for (const g of groupOrder) if (map.has(g) && !ordered.includes(g)) ordered.push(g)
+    for (const g of keys.sort()) if (!ordered.includes(g) && g !== '') ordered.push(g)
+    if (map.has('') && !ordered.includes('')) ordered.push('')
+    return ordered.map((name) => ({ name, servers: map.get(name)! }))
+  }, [backends, groupOrder])
 
   const groupOf = (id: string) => filtered.find((server) => server.id === id)?.group?.trim() ?? ''
 
@@ -105,15 +106,26 @@ export default function ServerOverview() {
             const isCollapsed = Boolean(collapsed[group.name])
             const label = group.name === '' ? 'Ungrouped' : group.name
             const droppableId = `group:${group.name}`
+            const index = groups.indexOf(group)
+            const moveFolder = (direction: -1 | 1) => {
+              const next = [...groups.map((g) => g.name)]
+              const target = index + direction
+              if (target < 0 || target >= next.length) return
+              ;[next[index], next[target]] = [next[target], next[index]]
+              void setGroupOrder(next).catch((error: unknown) => setError(String(error)))
+            }
             return (
               <DroppableGroup key={group.name === '' ? '__ungrouped' : group.name} id={droppableId}>
                 {(setNodeRef, isOver) => (
                   <Box ref={setNodeRef} sx={{ border: 1, borderColor: isOver ? 'primary.main' : 'divider', borderRadius: 1, overflow: 'hidden', bgcolor: isOver ? 'action.selected' : 'transparent' }}>
-                    <Stack direction="row" spacing={1} sx={{ alignItems: 'center', px: 1.5, py: 1, bgcolor: 'action.hover', cursor: 'pointer' }} onClick={() => toggle(group.name)}>
-                      {isCollapsed ? <ChevronRightIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
+                    <Stack direction="row" spacing={1} sx={{ alignItems: 'center', px: 1.5, py: 1, bgcolor: 'action.hover' }}>
+                      <IconButton size="small" onClick={() => toggle(group.name)} sx={{ color: 'text.secondary' }}>{isCollapsed ? <ChevronRightIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}</IconButton>
                       {isCollapsed ? <FolderIcon fontSize="small" sx={{ color: 'text.secondary' }} /> : <FolderOpenIcon fontSize="small" sx={{ color: 'text.secondary' }} />}
-                      <Typography variant="subtitle2" sx={{ fontWeight: 600, flex: 1 }}>{label}</Typography>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 600, flex: 1, cursor: 'pointer' }} onClick={() => toggle(group.name)}>{label}</Typography>
                       <Typography variant="caption" color="text.secondary">{group.servers.length}</Typography>
+                      {group.name !== '' && <NetworkPermissions scope={`group:${group.name}`} />}
+                      <IconButton size="small" disabled={index === 0} onClick={() => moveFolder(-1)} aria-label={`Move ${label} up`}><ChevronRightIcon fontSize="small" sx={{ transform: 'rotate(-90deg)' }} /></IconButton>
+                      <IconButton size="small" disabled={index === groups.length - 1} onClick={() => moveFolder(1)} aria-label={`Move ${label} down`}><ChevronRightIcon fontSize="small" sx={{ transform: 'rotate(90deg)' }} /></IconButton>
                     </Stack>
                     <Collapse in={!isCollapsed}>
                       <SortableContext items={group.servers.map((server) => server.id)} strategy={verticalListSortingStrategy}>

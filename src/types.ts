@@ -96,6 +96,8 @@ export interface PanelState {
   permissions: PermissionStore
   permissionServers: Record<string, PermissionStore>
   permissionGroups: Record<string, PermissionStore>
+  availablePermissions: Record<string, string[]>
+  groupOrder: string[]
   filePath: string
   javaVersions: string[]
   servers: Server[]

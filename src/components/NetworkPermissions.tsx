@@ -9,8 +9,16 @@ interface GroupDraft { name: string; weight: number; inherits: string[]; isNew: 
 interface UserDraft { uuid: string; name: string; groups: string[]; nodes: NodeRow[] }
 
 export default function NetworkPermissions({ scope = 'network' }: { scope?: string }) {
-  const { servers, permissions, permissionServers, permissionGroups, savePermissionGroup, removePermissionGroup, setDefaultPermissionGroup, savePermissionUser, removePermissionUser, trackPermissionUser } = usePanel()
+  const { servers, permissions, permissionServers, permissionGroups, availablePermissions, savePermissionGroup, removePermissionGroup, setDefaultPermissionGroup, savePermissionUser, removePermissionUser, trackPermissionUser } = usePanel()
   const store = scope === 'network' ? permissions : scope.startsWith('server:') ? (permissionServers?.[scope.slice(7)] ?? permissions) : scope.startsWith('group:') ? (permissionGroups?.[scope.slice(6)] ?? permissions) : permissions
+  // Available permission nodes reported by servers in this scope.
+  const available = scope === 'network'
+    ? [...new Set(Object.values(availablePermissions ?? {}).flat())]
+    : scope.startsWith('server:')
+      ? (availablePermissions?.[scope.slice(7)] ?? [])
+      : scope.startsWith('group:')
+        ? [...new Set(servers.filter((s) => s.group?.trim() === scope.slice(6)).flatMap((s) => availablePermissions?.[s.id] ?? []))]
+        : []
   const [open, setOpen] = useState(false), [tab, setTab] = useState('groups')
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [notice, setNotice] = useState('')
   const [group, setGroup] = useState<GroupDraft | null>(null), [user, setUser] = useState<UserDraft | null>(null)
@@ -75,7 +83,7 @@ export default function NetworkPermissions({ scope = 'network' }: { scope?: stri
                   {groups.filter((name) => name !== group.name).map((name) => <MenuItem key={name} value={name}><Checkbox size="small" checked={group.inherits.includes(name)} /><ListItemText primary={name} /></MenuItem>)}
                 </Select>
               </FormControl>
-              <Nodes rows={group.nodes} disabled={busy} onChange={(rows) => setGroup({ ...group, nodes: rows })} />
+              <Nodes rows={group.nodes} disabled={busy} onChange={(rows) => setGroup({ ...group, nodes: rows })} available={available} />
             </Stack> : <Typography variant="body2" color="text.secondary">Create a group to start assigning permissions.</Typography>}
           </Stack> : <Stack spacing={2}>
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ alignItems: { sm: 'center' } }}>
@@ -96,7 +104,7 @@ export default function NetworkPermissions({ scope = 'network' }: { scope?: stri
                   {groups.map((name) => <MenuItem key={name} value={name}><Checkbox size="small" checked={user.groups.includes(name)} /><ListItemText primary={name} /></MenuItem>)}
                 </Select>
               </FormControl>
-              <Nodes rows={user.nodes} disabled={busy} onChange={(rows) => setUser({ ...user, nodes: rows })} />
+              <Nodes rows={user.nodes} disabled={busy} onChange={(rows) => setUser({ ...user, nodes: rows })} available={available} />
             </Stack> : <Typography variant="body2" color="text.secondary">Players without a group entry simply get the default group.</Typography>}
           </Stack>}
         </Stack>
@@ -112,11 +120,14 @@ export default function NetworkPermissions({ scope = 'network' }: { scope?: stri
   </>
 }
 
-function Nodes({ rows, disabled, onChange }: { rows: NodeRow[]; disabled: boolean; onChange: (rows: NodeRow[]) => void }) {
+function Nodes({ rows, disabled, onChange, available = [] }: { rows: NodeRow[]; disabled: boolean; onChange: (rows: NodeRow[]) => void; available?: string[] }) {
   return <Stack spacing={1}>
     <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between' }}><Typography variant="subtitle2">Permissions</Typography><Chip size="small" variant="outlined" label={`${rows.length}`} /></Stack>
+    <datalist id="perm-suggestions">{available.map((n) => <option key={n} value={n} />)}</datalist>
     {rows.map((row, index) => <Stack key={index} direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-      <TextField disabled={disabled} value={row.node} placeholder="essentials.fly" onChange={(e) => onChange(rows.map((entry, position) => position === index ? { ...entry, node: e.target.value } : entry))} sx={{ flex: 1 }} slotProps={{ htmlInput: { maxLength: 128, spellCheck: false } }} />
+      <TextField disabled={disabled} value={row.node} placeholder="essentials.fly" onChange={(e) => onChange(rows.map((entry, position) => position === index ? { ...entry, node: e.target.value } : entry))} sx={{ flex: 1 }} slotProps={{ htmlInput: { maxLength: 128, spellCheck: false, list: 'perm-suggestions' } }} />
+...
+    <datalist id="perm-suggestions">{available.map((n) => <option key={n} value={n} />)}</datalist>
       <ToggleButtonGroup exclusive size="small" disabled={disabled} value={row.value ? 'allow' : 'deny'} onChange={(_, value: string | null) => { if (value) onChange(rows.map((entry, position) => position === index ? { ...entry, value: value === 'allow' } : entry)) }}>
         <ToggleButton value="allow">Allow</ToggleButton><ToggleButton value="deny">Deny</ToggleButton>
       </ToggleButtonGroup>

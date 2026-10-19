@@ -16,7 +16,11 @@ import org.bukkit.plugin.java.JavaPlugin;
 public final class PaperPlugin extends JavaPlugin implements Listener {
 
   private final Permissions permissions = new Permissions();
-  private final Channel channel = new Channel(permissions, this::applyAll);
+  private final Channel channel = new Channel(permissions, this::applyAll, () -> {
+    java.util.List<String> names = new java.util.ArrayList<>();
+    for (org.bukkit.permissions.Permission permission : getServer().getPluginManager().getPermissions()) names.add(permission.getName());
+    return names;
+  });
   private final java.util.Map<UUID, PermissionAttachment> applied = new java.util.HashMap<>();
 
   @Override

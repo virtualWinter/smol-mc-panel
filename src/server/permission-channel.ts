@@ -10,19 +10,15 @@ import type { PermissionService } from './permission-service'
 
 const text = (value: unknown, max: number): value is string => typeof value === 'string' && value.length >= 1 && value.length <= max && !value.includes('\0')
 
-/** Pushes the panel's permission snapshot to running servers over a Unix socket.
- *
- * The plugin connects, authenticates with the per-server token, and receives the current
- * snapshot; the panel then pushes a new snapshot whenever permissions change, so edits
- * are applied live instead of being polled from a file. The socket path and token are
- * written into the server directory so the plugin can find them at startup. */
 export class PermissionChannel {
-  private closing = false
   private server?: SocketServer
   private starting?: Promise<void>
+  private closing = false
   private tokens = new Map<string, string>()
   private clients = new Map<string, Set<Socket>>()
+  private available = new Map<string, string[]>()
   readonly socketPath: string
+
   constructor(private root: string, private pidFor: (id: string) => number | undefined, private permissionService: PermissionService) {
     this.socketPath = resolve(root, 'permissions.sock')
     this.loadTokens()
@@ -44,6 +40,8 @@ export class PermissionChannel {
     for (const [k, v] of this.tokens) data[k] = v
     writeFileSync(path, JSON.stringify(data), { mode: 0o600 })
   }
+
+  availablePermissions(serverId: string): string[] { return this.available.get(serverId) ?? [] }
 
   async start() {
     if (this.starting) return this.starting
@@ -68,29 +66,40 @@ export class PermissionChannel {
   private handleConnection(socket: Socket) {
     socket.setTimeout(10_000, () => socket.destroy())
     let buffer = ''
-    const finish = (serverId: string) => {
-      if (!this.clients.has(serverId)) this.clients.set(serverId, new Set())
-      this.clients.get(serverId)!.add(socket)
-      socket.setTimeout(0)
-      socket.on('close', () => { this.clients.get(serverId)?.delete(socket) })
-      socket.on('error', () => { this.clients.get(serverId)?.delete(socket) })
-      this.send(socket, { type: 'snapshot', content: this.permissionService.serializeForServer(serverId) })
-      socket.on('data', () => {})
-    }
+    let authed = false
+    let serverId = ''
     socket.on('data', (chunk: Buffer) => {
       buffer += chunk.toString('utf8')
-      const end = buffer.indexOf('\n')
-      if (end < 0) { if (buffer.length > 65536) socket.destroy(); return }
-      const frame = buffer.slice(0, end)
-      buffer = buffer.slice(end + 1)
-      let data: Record<string, unknown>
-      try { data = JSON.parse(frame) as Record<string, unknown> } catch { socket.destroy(); return }
-      if (data.version !== 1 || !text(data.serverId, 64) || !text(data.token, 64)) { socket.destroy(); return }
-      const expected = this.tokens.get(data.serverId as string)
-      if (!expected || (data.token as string).length !== expected.length || !timingSafeEqual(Buffer.from(expected), Buffer.from(data.token as string))) { socket.destroy(); return }
-      const pid = this.pidFor(data.serverId as string)
-      if (pid !== undefined && data.pid !== pid) { socket.destroy(); return }
-      finish(data.serverId as string)
+      let end: number
+      while ((end = buffer.indexOf('\n')) >= 0) {
+        const frame = buffer.slice(0, end)
+        buffer = buffer.slice(end + 1)
+        if (!authed) {
+          let data: Record<string, unknown>
+          try { data = JSON.parse(frame) as Record<string, unknown> } catch { socket.destroy(); return }
+          if (data.version !== 1 || !text(data.serverId, 64) || !text(data.token, 64)) { socket.destroy(); return }
+          const expected = this.tokens.get(data.serverId as string)
+          if (!expected || (data.token as string).length !== expected.length || !timingSafeEqual(Buffer.from(expected), Buffer.from(data.token as string))) { socket.destroy(); return }
+          const pid = this.pidFor(data.serverId as string)
+          if (pid !== undefined && data.pid !== pid) { socket.destroy(); return }
+          serverId = data.serverId as string
+          authed = true
+          socket.setTimeout(0)
+          if (!this.clients.has(serverId)) this.clients.set(serverId, new Set())
+          this.clients.get(serverId)!.add(socket)
+          socket.on('close', () => { this.clients.get(serverId)?.delete(socket) })
+          socket.on('error', () => { this.clients.get(serverId)?.delete(socket) })
+          this.send(socket, { type: 'snapshot', content: this.permissionService.serializeForServer(serverId) })
+          continue
+        }
+        try {
+          const msg = JSON.parse(frame) as Record<string, unknown>
+          if (msg.type === 'permissions' && Array.isArray(msg.names)) {
+            this.available.set(serverId, msg.names.filter((n): n is string => typeof n === 'string').slice(0, 10000))
+          }
+        } catch { /* ignore malformed */ }
+      }
+      if (buffer.length > 65536) socket.destroy()
     })
     socket.on('error', () => {})
   }
@@ -99,7 +108,6 @@ export class PermissionChannel {
     try { socket.write(JSON.stringify(message) + '\n') } catch { socket.destroy() }
   }
 
-  /** Pushes the current snapshot to every connected plugin. */
   broadcast() {
     for (const [serverId, sockets] of this.clients) {
       const frame = JSON.stringify({ type: 'snapshot', content: this.permissionService.serializeForServer(serverId) }) + '\n'
@@ -109,7 +117,6 @@ export class PermissionChannel {
     }
   }
 
-  /** Writes the connection details the plugin reads at startup. */
   configuration(config: ServerConfig, directory: string): string {
     let token = this.tokens.get(config.id)
     if (!token) { token = randomBytes(32).toString('hex'); this.tokens.set(config.id, token); this.saveTokens() }

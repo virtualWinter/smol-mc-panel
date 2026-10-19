@@ -33,6 +33,7 @@ export class NetworkRuntime {
   private pluginService: Plugins
   private playerService: Players
   private permissionService: PermissionService
+  private groupOrder: string[] = []
   private permissionChannel?: PermissionChannel
   private backupTimer: ReturnType<typeof setInterval>
   private closing = false
@@ -91,6 +92,7 @@ export class NetworkRuntime {
     this.pluginService = new Plugins(root)
     this.playerService = new Players(root)
     this.permissionService = new PermissionService(root)
+    this.groupOrder = readJson(resolve(root, 'group-order.json'), { order: [] }).order ?? []
     if (this.enablePermissions) {
       const manager = this.manager
       this.permissionChannel = new PermissionChannel(root, (id) => manager.get(id).child?.pid, this.permissionService)
@@ -359,6 +361,12 @@ export class NetworkRuntime {
     saveConfig(this.root, configs); this.configs = configs
   }
 
+  groupOrderList() { return [...this.groupOrder] }
+  setGroupOrder(order: string[]) {
+    this.groupOrder = [...new Set(order.map((g) => String(g).trim()).filter(Boolean))]
+    saveJson(resolve(this.root, 'group-order.json'), { order: this.groupOrder })
+  }
+
   acceptEula(id: string) {
     this.assertWritable(id)
     if (this.config(id).kind !== 'paper' || this.manager.get(id).child) throw new PanelError('Stop the Paper server before accepting the EULA.')
@@ -514,6 +522,8 @@ export class NetworkRuntime {
       permissions: structuredClone(this.permissionService.store('network').store),
       permissionServers: Object.fromEntries(this.configs.filter((c) => c.kind === 'paper').map((c) => [c.id, structuredClone(this.permissionService.store(`server:${c.id}`).store)])),
       permissionGroups: Object.fromEntries([...new Set(this.configs.filter((c) => c.group?.trim()).map((c) => c.group!.trim()))].map((g) => [g, structuredClone(this.permissionService.store(`group:${g}`).store)])),
+      availablePermissions: Object.fromEntries(this.configs.map((c) => [c.id, this.permissionChannel?.availablePermissions(c.id) ?? []])),
+      groupOrder: [...this.groupOrder],
     }
   }
 

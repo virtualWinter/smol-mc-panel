@@ -17,15 +17,17 @@ import java.util.Properties;
 public final class Channel {
   private final Permissions permissions;
   private final Runnable onChange;
+  private final java.util.function.Supplier<java.util.List<String>> availablePermissions;
   private final String socketPath;
   private final String serverId;
   private final String token;
   private final long pid;
   private Thread thread;
 
-  public Channel(Permissions permissions, Runnable onChange) {
+  public Channel(Permissions permissions, Runnable onChange, java.util.function.Supplier<java.util.List<String>> availablePermissions) {
     this.permissions = permissions;
     this.onChange = onChange;
+    this.availablePermissions = availablePermissions == null ? () -> java.util.Collections.emptyList() : availablePermissions;
     Properties props = loadProperties();
     this.socketPath = props == null ? null : props.getProperty("socket");
     this.serverId = props == null ? null : props.getProperty("serverId");
@@ -63,6 +65,22 @@ public final class Channel {
           String auth = "{\"version\":1,\"serverId\":\"" + escape(serverId) + "\",\"token\":\"" + escape(token) + "\",\"pid\":" + pid + "}\n";
           out.write(auth.getBytes(StandardCharsets.UTF_8));
           out.flush();
+          // Report the permission nodes this server knows about.
+          try {
+            java.util.List<String> names = this.availablePermissions.get();
+            if (names != null && !names.isEmpty()) {
+              StringBuilder sb = new StringBuilder("{\"type\":\"permissions\",\"names\":[");
+              boolean first = true;
+              for (String name : names) {
+                if (!first) sb.append(',');
+                first = false;
+                sb.append('\"').append(escape(name)).append('\"');
+              }
+              sb.append("]}\n");
+              out.write(sb.toString().getBytes(StandardCharsets.UTF_8));
+              out.flush();
+            }
+          } catch (Exception ignored) { /* best effort */ }
           while (true) {
             String header = readLine(in);
             if (header == null) break;

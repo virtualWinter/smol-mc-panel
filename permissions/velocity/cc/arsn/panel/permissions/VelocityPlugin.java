@@ -14,7 +14,12 @@ import com.velocitypowered.api.proxy.Player;
 public final class VelocityPlugin {
 
   private final Permissions permissions = new Permissions();
-  private final Channel channel = new Channel(permissions, () -> {});
+  private final Channel channel = new Channel(permissions, () -> {}, () -> {
+    java.util.List<String> names = new java.util.ArrayList<>();
+    // Velocity's plugin manager doesn't expose registered permissions the same way;
+    // report none for now.
+    return names;
+  });
 
   @Subscribe
   public void onInitialize(ProxyInitializeEvent event) {
