@@ -58,7 +58,7 @@ export class NetworkRuntime {
   private agentBuild?: Promise<string>
   private agentArgs = new Map<string, string[]>()
 
-  constructor(readonly root: string, autostart = true, private enableAgent = true, private enablePermissions = true) {
+  constructor(readonly root: string, private readonly autostart = true, private enableAgent = true, private enablePermissions = true) {
     mkdirSync(root, { recursive: true, mode: 0o700 })
     this.releaseLock = acquireLock(root)
     try {
@@ -116,8 +116,10 @@ export class NetworkRuntime {
     this.timer = setInterval(() => { void this.sample() }, 2000)
     this.timer.unref()
     if (autostart) {
-      const timer = setTimeout(() => { void this.startEligible() }, 0)
-      timer.unref()
+      const starts = setTimeout(() => { void this.startEligible() }, 0)
+      starts.unref()
+      const installs = setTimeout(() => { void this.installEligible() }, 0)
+      installs.unref()
     }
     } catch (error) { this.releaseLock(); throw error }
   }
@@ -147,6 +149,8 @@ export class NetworkRuntime {
     this.playerService.apply(backend.id, this.directory(backend.id))
     this.permissionService.writeSnapshot(this.directory(backend.id), backend)
     if (this.enablePermissions) { void this.ensurePermissionChannel(); this.permissionChannel?.configuration(backend, this.directory(backend.id)) }
+    // Install the new server's software in the background so it is not blocked on a manual step.
+    if (this.autostart) void this.installServer(backend.id)
   }
 
   removeServer(id: string) {
@@ -313,6 +317,29 @@ export class NetworkRuntime {
       if (config.autoStart && this.installed(config.id) && this.eulaAccepted(config.id)) {
         try { await this.power(config.id, 'Start') } catch (error) { this.manager.log(config.id, `[Panel] Autostart skipped: ${String(error)}`) }
       }
+    }
+  }
+
+  /** Installs software the panel has never installed, so a freshly created network is ready
+   * without a manual Reinstall. A missing JAR that has an install manifest is left alone: that
+   * is a deliberate removal. Downloads run in the background and never block the panel; a
+   * failed install is logged and retried on the next start. */
+  private async installEligible() {
+    for (const config of this.configs) {
+      if (this.closing || this.installed(config.id)) continue
+      if (existsSync(resolve(this.root, 'installations', `${config.id}.json`))) continue
+      await this.installServer(config.id)
+    }
+  }
+
+  /** Downloads one server's JAR and Java, then starts it when it is set to autostart. */
+  private async installServer(id: string) {
+    const config = this.config(id)
+    try {
+      await this.reinstall(id)
+      if (config.autoStart && this.eulaAccepted(id)) await this.power(id, 'Start')
+    } catch (error) {
+      this.manager.log(id, `[Panel] Automatic install failed: ${error instanceof PanelError ? error.message : 'unknown error'}`)
     }
   }
 

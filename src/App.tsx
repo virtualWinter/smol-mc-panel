@@ -17,7 +17,7 @@ export default async function App({ url }: { url: string }) {
   if (!requestContext().user) return <Shell><LoginForm /></Shell>
   const path = new URL(url).pathname.split('/').filter(Boolean)
   return (
-    <Panel state={await snapshot(url)}>
+    <Panel state={{ ...(await snapshot(url)), user: requestContext().user }}>
       {path.length === 0 ? <ServerOverview /> : <ServerPage key={path[0]} serverId={path[0]} page={path.slice(1).join('/')} />}
     </Panel>
   )

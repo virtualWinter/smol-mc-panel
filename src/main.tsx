@@ -2,9 +2,10 @@
 
 import { StrictMode } from 'react'
 import type { ReactNode } from 'react'
-import { Alert, Container, CssBaseline, ThemeProvider, createTheme } from '@mui/material'
+import { Alert, Box, Container, CssBaseline, ThemeProvider, createTheme } from '@mui/material'
 import './index.css'
 import { PanelProvider } from './data/PanelProvider'
+import AppHeader from './components/AppHeader'
 import type { PanelState } from './types'
 import { Component } from 'react'
 
@@ -30,13 +31,16 @@ const theme = createTheme({
   },
 })
 
-export function Shell({ children }: { children: ReactNode }) {
+export function Shell({ children, header }: { children: ReactNode; header?: ReactNode }) {
   return (
   <StrictMode>
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <PanelErrorBoundary>
-        <Container maxWidth="lg" sx={{ py: { xs: 2, sm: 4 }, px: { xs: 2, sm: 4 } }}>{children}</Container>
+        <Box sx={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column' }}>
+          {header ?? <AppHeader />}
+          <Container maxWidth="lg" sx={{ py: { xs: 2, sm: 4 }, px: { xs: 2, sm: 4 }, flex: 1 }}>{children}</Container>
+        </Box>
       </PanelErrorBoundary>
     </ThemeProvider>
   </StrictMode>
@@ -44,5 +48,5 @@ export function Shell({ children }: { children: ReactNode }) {
 }
 
 export default function Panel({ children, state }: { children: ReactNode; state: PanelState }) {
-  return <Shell><PanelProvider state={state}>{children}</PanelProvider></Shell>
+  return <PanelProvider state={state}><Shell header={<AppHeader user={state.user} />}>{children}</Shell></PanelProvider>
 }

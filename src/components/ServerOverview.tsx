@@ -7,20 +7,17 @@ import FolderOpenIcon from '@mui/icons-material/FolderOpen'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import ChevronRightIcon from '@mui/icons-material/ChevronRight'
 import HubOutlinedIcon from '@mui/icons-material/HubOutlined'
-import LogoutOutlinedIcon from '@mui/icons-material/LogoutOutlined'
-import { logout } from '../server/auth-actions'
 import SearchIcon from '@mui/icons-material/Search'
 import SortableServerRow from './SortableServerRow'
 import { closestCenter, DndContext, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { usePanel } from '../data/usePanel'
 import NetworkServers from './NetworkServers'
-import NetworkPlayers from './NetworkPlayers'
 import NetworkPermissions from './NetworkPermissions'
 import DroppableGroup from './DroppableGroup'
 
 export default function ServerOverview() {
-  const { servers, reorderServers, saveSettings, setGroupOrder, groupOrder } = usePanel()
+  const { servers, networkPlayers, reorderServers, saveSettings, setGroupOrder, groupOrder } = usePanel()
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }))
   const [search, setSearch] = useState('')
   const [error, setError] = useState('')
@@ -47,6 +44,7 @@ export default function ServerOverview() {
   }, [backends, groupOrder])
 
   const groupOf = (id: string) => filtered.find((server) => server.id === id)?.group?.trim() ?? ''
+  const onlinePlayers = new Set(networkPlayers.map((player) => player.uuid)).size
 
   const toggle = (name: string) => setCollapsed((current) => ({ ...current, [name]: !current[name] }))
 
@@ -68,22 +66,26 @@ export default function ServerOverview() {
 
   return (
     <Stack spacing={3}>
-      <Stack direction="row" spacing={2} sx={{ alignItems: 'center', justifyContent: 'space-between' }}>
-        <Typography component="h1" variant="h6" sx={{ fontWeight: 600 }}>Network</Typography>
-        <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}><TextField
-           placeholder="Search servers"
-          size="small"
-           sx={{ width: { xs: 150, sm: 240 } }}
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          slotProps={{
-            htmlInput: { 'aria-label': 'Search network' },
-            input: { startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> },
-          }}
-        /><IconButton aria-label="Sign out" onClick={() => { void logout().catch((error: unknown) => setError(String(error))) }}><LogoutOutlinedIcon fontSize="small" /></IconButton></Stack>
+      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ alignItems: { sm: 'center' }, justifyContent: 'space-between' }}>
+        <Box sx={{ minWidth: 0 }}>
+          <Typography component="h1" variant="h6" sx={{ fontWeight: 600 }}>Network</Typography>
+          <Typography variant="caption" color="text.secondary">{servers.length} {servers.length === 1 ? 'server' : 'servers'} · {onlinePlayers} online</Typography>
+        </Box>
+        <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+          <TextField
+            placeholder="Search servers"
+            sx={{ width: { xs: 150, sm: 240 } }}
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            slotProps={{
+              htmlInput: { 'aria-label': 'Search network' },
+              input: { startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> },
+            }}
+          />
+          <NetworkServers />
+        </Stack>
       </Stack>
       {error && <Alert severity="error">{error}</Alert>}
-      <Stack direction="row" spacing={1}><NetworkServers /><NetworkPlayers /><NetworkPermissions /></Stack>
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <Stack spacing={2}>
           {proxy && (

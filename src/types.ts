@@ -87,6 +87,8 @@ export interface AgentMetrics {
 export interface FileEntry extends ServerFile { path: string; content?: string; binary?: boolean }
 export interface MetricHistory { cpu: number[]; ram: number[]; players: number[]; tps: number[]; network?: number[] }
 export interface PanelState {
+  /** Signed-in admin username, shown in the app header. */
+  user?: string
   backupSchedules: Record<string, BackupSchedule>
   backupJobs: string[]
   s3Enabled: boolean
