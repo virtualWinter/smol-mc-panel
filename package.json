@@ -30,6 +30,7 @@
     "@uiw/react-codemirror": "^4.25.12",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",
+    "pg": "^8.23.1",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "rsc-html-stream": "^0.0.8",
@@ -40,6 +41,7 @@
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
+    "@types/pg": "^8.23.1",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
     "@types/yauzl": "^3.4.0",

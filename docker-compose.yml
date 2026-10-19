@@ -19,6 +19,7 @@ services:
         required: false
     environment:
       PANEL_DATA_DIR: /data
+      DATABASE_URL: ${DATABASE_URL:-}
       # Dokploy (and docker compose) interpolates these from the deployment's .env.
       PANEL_ORIGIN: ${PANEL_ORIGIN:-}
       PAPERMC_USER_AGENT: ${PAPERMC_USER_AGENT:-}

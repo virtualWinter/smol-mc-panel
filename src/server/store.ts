@@ -2,6 +2,8 @@ import 'server-only'
 import { NetworkRuntime } from './runtime'
 import { prepareStorage } from './storage'
 import { requireAdmin } from './request-context'
+import { initDatabase, isDatabaseReady } from './db'
+import { migrateStorage, setDataRoot } from './doc-store'
 
 const globalStore = globalThis as typeof globalThis & { networkRuntime?: NetworkRuntime; panelStorageRoot?: string }
 
@@ -9,10 +11,14 @@ export function dataRoot() {
   return globalStore.panelStorageRoot ??= prepareStorage(process.cwd(), process.env.PANEL_DATA_DIR)
 }
 
-export function runtime(): NetworkRuntime {
+export async function runtime(): Promise<NetworkRuntime> {
   requireAdmin()
   if (!globalStore.networkRuntime) {
-    const network = new NetworkRuntime(dataRoot())
+    const root = dataRoot()
+    setDataRoot(root)
+    await initDatabase()
+    await migrateStorage(root)
+    const network = new NetworkRuntime(root)
     globalStore.networkRuntime = network
     let stopping = false
     const stop = () => {
@@ -23,7 +29,7 @@ export function runtime(): NetworkRuntime {
     process.once('SIGTERM', stop)
     process.once('SIGINT', stop)
   }
-  return globalStore.networkRuntime
+  return globalStore.networkRuntime!
 }
 
-export function snapshot(url: string) { return runtime().snapshot(url) }
+export async function snapshot(url: string) { return (await runtime()).snapshot(url) }
