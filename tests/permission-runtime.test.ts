@@ -16,9 +16,10 @@ test('permission edits persist and reach every server as a live snapshot', async
   const runtime = new NetworkRuntime(root, false)
   try {
     assert.equal(runtime.snapshot('http://localhost/').permissions.users.length, 0)
-    assert.ok(runtime.snapshot('http://localhost/').servers.every((server) => server.permissionPlugin === 'off'))
-    // Nothing is written before the first permission is configured.
-    assert.equal(existsSync(resolve(root, 'servers/proxy/plugins/smol-panel/permissions.txt')), false)
+    assert.ok(runtime.snapshot('http://localhost/').servers.every((server) => server.permissionPlugin === 'pending'))
+    // The panel always writes the current snapshot so servers have it on start.
+    const initial = readFileSync(resolve(root, 'servers/proxy/plugins/smol-panel/permissions.txt'), 'utf8')
+    assert.equal(initial, '#smol-panel-permissions 1\nd\n')
 
     runtime.savePermissionGroup({ name: 'staff', weight: 10, inherits: [], permissions: [{ node: 'Staff.Node', value: true }] })
     runtime.savePermissionUser({ uuid: '11111111-1111-1111-1111-111111111111', name: 'Steve', groups: ['staff'], permissions: [{ node: 'staff.extra', value: false }] })

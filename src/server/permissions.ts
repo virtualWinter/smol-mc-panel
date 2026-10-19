@@ -44,7 +44,7 @@ export class Permissions {
     this.store = sanitizePermissions(readJson(resolve(root, 'permissions.json'), emptyPermissions()))
   }
 
-  get configured() { return storeHasData(this.store) }
+  get configured() { return true }
 
   private persist() { saveJson(resolve(this.root, 'permissions.json'), this.store) }
 
@@ -119,7 +119,6 @@ export class Permissions {
   serialize() { return serializePermissions(this.store) }
 
   status(kind: 'velocity' | 'paper', directory: string): 'off' | 'installed' | 'pending' {
-    if (!this.configured) return 'off'
     return this.installed(kind, directory) ? 'installed' : 'pending'
   }
 

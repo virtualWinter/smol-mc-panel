@@ -56,7 +56,7 @@ export class NetworkRuntime {
   private agentBuild?: Promise<string>
   private agentArgs = new Map<string, string[]>()
 
-  constructor(readonly root: string, autostart = true, private enableAgent = true) {
+  constructor(readonly root: string, autostart = true, private enableAgent = true, private enablePermissions = true) {
     mkdirSync(root, { recursive: true, mode: 0o700 })
     this.releaseLock = acquireLock(root)
     try {
@@ -90,11 +90,13 @@ export class NetworkRuntime {
     this.pluginService = new Plugins(root)
     this.playerService = new Players(root)
     this.permissionService = new Permissions(root)
-    const manager = this.manager
-    const ch = new PermissionChannel(root, (id) => manager.get(id).child?.pid, this.permissionService)
-    this.permissionChannel = ch
-    void this.permissionChannel.start().catch((error) => { this.manager.log('proxy', `[Panel] Permission channel failed to start: ${error instanceof PanelError ? error.message : 'unknown error'}`) })
-    if (this.permissionService.configured) for (const config of this.configs) this.permissionService.writeSnapshot(this.directory(config.id))
+    if (this.enablePermissions) {
+      const manager = this.manager
+      this.permissionChannel = new PermissionChannel(root, (id) => manager.get(id).child?.pid, this.permissionService)
+      void this.permissionChannel.start().catch((error) => { this.manager.log('proxy', `[Panel] Permission channel failed to start: ${error instanceof PanelError ? error.message : 'unknown error'}`) })
+    }
+    for (const config of this.configs) this.permissionService.writeSnapshot(this.directory(config.id))
+    void this.permissionChannel?.start().catch(() => {})
     this.backupService = new Backups(root, {
       ids: () => this.configs.map((s) => s.id), directory: (id) => this.directory(id), assertIdle: (id) => this.assertWritable(id), busy: this.backupJobs,
       running: (id) => Boolean(this.manager.get(id).child),
@@ -137,8 +139,8 @@ export class NetworkRuntime {
     if (live) this.pushProxyTopology(proxy)
     this.metrics[backend.id] = emptyMetrics(false)
     this.playerService.apply(backend.id, this.directory(backend.id))
-    if (this.permissionService.configured) this.permissionService.writeSnapshot(this.directory(backend.id))
-    if (this.permissionService.configured) { void this.ensurePermissionChannel(); this.permissionChannel?.configuration(backend, this.directory(backend.id)) }
+    this.permissionService.writeSnapshot(this.directory(backend.id))
+    if (this.enablePermissions) { void this.ensurePermissionChannel(); this.permissionChannel?.configuration(backend, this.directory(backend.id)) }
   }
 
   removeServer(id: string) {
@@ -276,12 +278,12 @@ export class NetworkRuntime {
   }
 
   private async preparePermissions(config: ServerConfig) {
-    if (!this.permissionService.configured) return
+    if (!this.enablePermissions) return
     await this.ensurePermissionChannel()
     this.permissionService.writeSnapshot(this.directory(config.id))
     const java = this.javaExecutables.get(Number(config.javaVersion.split(' ')[1]))!
     await this.permissionService.install(config.kind, this.directory(config.id), java)
-this.permissionChannel?.configuration(config, this.directory(config.id))
+    this.permissionChannel?.configuration(config, this.directory(config.id))
   }
 
   private async prepareAgent(config: ServerConfig) {
