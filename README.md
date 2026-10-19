@@ -17,11 +17,13 @@ Open the panel locally to complete first-start setup: create the admin username/
 data/
   admin.json
   panel.json
-  servers/<server-id>/
+  servers/<uuid>/
   java/java-<version>/
   backups/<server-id>/
   installations/<server-id>.json
 ```
+
+Server directories are named by a stable UUID. The server ID is the proxy-facing name used in `velocity.toml` and the panel, so renaming an ID never moves its files. On first load, existing `servers/<server-id>/` directories are migrated to `servers/<uuid>/`.
 
 On restart, the old `network/` directory is migrated to `data/` if the destination does not exist. Legacy top-level `java-<version>` directories move under `data/java/`. Migration refuses live process locks or conflicting destinations; no existing files are overwritten. Stop the old panel and its managed servers before restarting with the new layout.
 
@@ -88,7 +90,7 @@ Opening Plugins automatically browses popular projects (by downloads) from the s
 
 ## Dokploy deployment
 
-After setup, use **Network → Manage servers** to create or unregister Paper backends. Adding a backend, or removing a stopped one, is applied to a running Velocity immediately: the panel rewrites only the `[servers]` table and asks the internal agent to register/unregister that backend through Velocity's own server API, moving any connected players to the next fallback rather than reloading `velocity.toml` (bind, forwarding, and other settings are untouched). If the running agent predates this support, restart Velocity once (or stop it) to enable live changes. The backend being removed must be stopped. Removal always preserves its directory and backups, and preserved directories cannot be reused accidentally. New backends are provisioned without downloading a JAR or accepting the EULA. At least one backend must remain.
+After setup, use **Network → Manage servers** to create or unregister Paper backends. Adding a backend, or removing a stopped one, is applied to a running Velocity immediately: the panel rewrites only the `[servers]` table and asks the internal agent to register/unregister that backend through Velocity's own server API, moving any connected players to the next fallback rather than reloading `velocity.toml` (bind, forwarding, and other settings are untouched). If the running agent predates this support, restart Velocity once (or stop it) to enable live changes. The backend being removed must be stopped. Removal always preserves its UUID directory and backups; adding the same ID again gets a fresh UUID directory, so preserved files cannot be reused accidentally. New backends are provisioned without downloading a JAR or accepting the EULA. At least one backend must remain.
 
 Deploy as a Dokploy **Docker Compose** service using this repository's `docker-compose.yml`; Dokploy's Traefik terminates TLS and routes to the panel. Set the service domain in Dokploy and configure the panel env so both layers agree:
 

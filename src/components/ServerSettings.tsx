@@ -92,6 +92,7 @@ function SettingsForm({ server }: ServerProps) {
       </Paper>
       <Accordion variant="outlined" disableGutters sx={{ '&:before': { display: 'none' } }}><AccordionSummary expandIcon={<ExpandMoreIcon />}><Typography variant="body2">Advanced</Typography></AccordionSummary><AccordionDetails><Stack spacing={2}>
         {field('jarFile', 'JAR file')}
+        {field('uuid', 'UUID', { slotProps: { input: { readOnly: true } } })}
         {field('workingDirectory', 'Directory', { slotProps: { input: { readOnly: true } } })}
         {field('startupCommand', 'Startup command', { multiline: true, minRows: 2, sx: { '& textarea': { fontFamily: 'monospace', fontSize: 13 } }, helperText: '{{MIN_MEMORY}} · {{MAX_MEMORY}} · {{JAR_FILE}}' })}
         {field('stopCommand', 'Stop command')}

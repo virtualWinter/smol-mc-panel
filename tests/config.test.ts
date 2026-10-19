@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import test from 'node:test'
-import { loadConfig, saveConfig, validateNetwork, validateRelativePath } from '../src/server/config'
+import { legacyServerUuid, loadConfig, saveConfig, validateNetwork, validateRelativePath, type ServerConfig } from '../src/server/config'
 import { provisionNetwork } from '../src/server/provision'
-import { defaults } from './helpers'
+import { defaults, testDirectory, testUuid } from './helpers'
 import { safePath } from '../src/server/paths'
 import { startupArgs } from '../src/server/startup'
 
@@ -36,20 +36,39 @@ test('the proxy always binds a public 0.0.0.0 address while backends stay loopba
   } finally { rmSync(root, { recursive: true, force: true }) }
 })
 
-test('legacy loopback proxies migrate to 0.0.0.0 across panel.json and the velocity.toml bind line', () => {
+test('legacy id-named server directories migrate to UUID directories and loopback proxies move to 0.0.0.0', () => {
   const root = mkdtempSync('/tmp/opencode/network-migrate-')
   try {
-    const legacy = defaults().map((server) => server.kind === 'velocity' ? { ...server, address: '127.0.0.1:25565' } : server)
+    const legacy = defaults().map((server) => {
+      const copy = { ...server } as Partial<ServerConfig>
+      delete copy.uuid
+      return {
+        ...copy,
+        workingDirectory: `servers/${server.id}`,
+        ...(server.kind === 'velocity' ? { address: '127.0.0.1:25565' } : {}),
+      }
+    })
     mkdirSync(resolve(root, 'servers/proxy'), { recursive: true })
     writeFileSync(resolve(root, 'servers/proxy/velocity.toml'), 'config-version = "2.8"\nbind = "127.0.0.1:25565"\nmotd = "keep me"\n')
+    mkdirSync(resolve(root, 'servers/survival'), { recursive: true })
+    writeFileSync(resolve(root, 'servers/survival/server.properties'), 'motd=Keep me\n')
     writeFileSync(resolve(root, 'panel.json'), JSON.stringify({ version: 1, servers: legacy }))
 
     const servers = loadConfig(root)
-    assert.equal(servers.find((server) => server.kind === 'velocity')!.address, '0.0.0.0:25565')
-    assert.deepEqual(loadConfig(root), servers)
-    assert.equal(JSON.parse(readFileSync(resolve(root, 'panel.json'), 'utf8')).servers[0].address, '0.0.0.0:25565')
-    const toml = readFileSync(resolve(root, 'servers/proxy/velocity.toml'), 'utf8')
+    const proxy = servers.find((server) => server.kind === 'velocity')!
+    const survival = servers.find((server) => server.id === 'survival')!
+    assert.equal(proxy.address, '0.0.0.0:25565')
+    assert.equal(proxy.uuid, legacyServerUuid('proxy'))
+    assert.equal(proxy.workingDirectory, `servers/${legacyServerUuid('proxy')}`)
+    assert.equal(survival.workingDirectory, `servers/${legacyServerUuid('survival')}`)
+    assert.equal(existsSync(resolve(root, 'servers/proxy')), false)
+    assert.equal(existsSync(resolve(root, 'servers/survival')), false)
+    const toml = readFileSync(resolve(root, proxy.workingDirectory, 'velocity.toml'), 'utf8')
     assert.ok(toml.includes('bind = "0.0.0.0:25565"') && toml.includes('motd = "keep me"'))
+    assert.equal(readFileSync(resolve(root, survival.workingDirectory, 'server.properties'), 'utf8'), 'motd=Keep me\n')
+    // The migration is idempotent and persisted.
+    assert.deepEqual(loadConfig(root), servers)
+    assert.equal(JSON.parse(readFileSync(resolve(root, 'panel.json'), 'utf8')).servers[0].workingDirectory, proxy.workingDirectory)
     // BungeeCord networks were removed and must abort with a clear message instead of half-loading.
     writeFileSync(resolve(root, 'panel.json'), JSON.stringify({ version: 1, servers: legacy.map((server) => server.kind === 'velocity' ? { ...server, kind: 'bungeecord', jarFile: 'bungeecord.jar', stopCommand: 'end' } : server) }))
     assert.throws(() => loadConfig(root), /BungeeCord support was removed/u)
@@ -60,15 +79,15 @@ test('the proxy backend list is reconciled from panel.json on every boot', () =>
   const root = mkdtempSync('/tmp/opencode/network-sync-')
   try {
     provisionNetwork(root, defaults())
-    const toml = () => readFileSync(resolve(root, 'servers/proxy/velocity.toml'), 'utf8')
+    const toml = () => readFileSync(resolve(root, testDirectory('proxy'), 'velocity.toml'), 'utf8')
     assert.ok(toml().includes('survival = "127.0.0.1:25566"') && toml().includes('try = ["survival"]'))
     // An unchanged topology rewrites nothing.
     const before = toml()
     provisionNetwork(root, defaults())
     assert.equal(toml(), before)
     // A user force-host for a kept backend survives; entries for dropped backends go.
-    writeFileSync(resolve(root, 'servers/proxy/velocity.toml'), toml().replace('[forced-hosts]', '[forced-hosts]\n"game.example.com" = ["survival"]\n"old.example.com" = ["ghost"]\n'))
-    const expanded = [...defaults(), { ...defaults()[1], id: 'events', name: 'Events', address: '127.0.0.1:25568', workingDirectory: 'servers/events' }]
+    writeFileSync(resolve(root, testDirectory('proxy'), 'velocity.toml'), toml().replace('[forced-hosts]', '[forced-hosts]\n"game.example.com" = ["survival"]\n"old.example.com" = ["ghost"]\n'))
+    const expanded = [...defaults(), { ...defaults()[1], uuid: testUuid('events'), id: 'events', name: 'Events', address: '127.0.0.1:25568', workingDirectory: testDirectory('events') }]
     provisionNetwork(root, expanded)
     let updated = toml()
     assert.ok(updated.includes('events = "127.0.0.1:25568"'))
@@ -86,7 +105,7 @@ test('the proxy backend list is reconciled from panel.json on every boot', () =>
 test('reconciling the backend list preserves untouched velocity.toml content, including comments', () => {
   const root = mkdtempSync('/tmp/opencode/network-sync-comments-')
   try {
-    mkdirSync(resolve(root, 'servers/proxy'), { recursive: true })
+    mkdirSync(resolve(root, testDirectory('proxy')), { recursive: true })
     const handTuned = [
       'config-version = "2.9"',
       'bind = "0.0.0.0:25565"',
@@ -107,9 +126,9 @@ test('reconciling the backend list preserves untouched velocity.toml content, in
       '\taccept-proxy-protocol = false',
       '',
     ].join('\n')
-    writeFileSync(resolve(root, 'servers/proxy/velocity.toml'), handTuned)
-    provisionNetwork(root, [...defaults().slice(0, 2), ...[defaults()[2], { ...defaults()[1], id: 'events', name: 'Events', address: '127.0.0.1:25568', workingDirectory: 'servers/events' }]])
-    const updated = readFileSync(resolve(root, 'servers/proxy/velocity.toml'), 'utf8')
+    writeFileSync(resolve(root, testDirectory('proxy'), 'velocity.toml'), handTuned)
+    provisionNetwork(root, [...defaults().slice(0, 2), ...[defaults()[2], { ...defaults()[1], uuid: testUuid('events'), id: 'events', name: 'Events', address: '127.0.0.1:25568', workingDirectory: testDirectory('events') }]])
+    const updated = readFileSync(resolve(root, testDirectory('proxy'), 'velocity.toml'), 'utf8')
     // Managed regions follow panel.json; everything else is byte-for-byte identical.
     assert.ok(updated.includes('events = "127.0.0.1:25568"'))
     assert.ok(updated.includes('# Should Velocity pass the version number from the backend server?'))
@@ -119,8 +138,8 @@ test('reconciling the backend list preserves untouched velocity.toml content, in
     assert.equal(updated.split('\n').filter((line) => line.startsWith('#')).length, 1)
     // Second boot with no changes rewrites nothing, so comments never churn.
     const afterBoot = updated
-    provisionNetwork(root, [...defaults().slice(0, 2), ...[defaults()[2], { ...defaults()[1], id: 'events', name: 'Events', address: '127.0.0.1:25568', workingDirectory: 'servers/events' }]])
-    assert.equal(readFileSync(resolve(root, 'servers/proxy/velocity.toml'), 'utf8'), afterBoot)
+    provisionNetwork(root, [...defaults().slice(0, 2), ...[defaults()[2], { ...defaults()[1], uuid: testUuid('events'), id: 'events', name: 'Events', address: '127.0.0.1:25568', workingDirectory: testDirectory('events') }]])
+    assert.equal(readFileSync(resolve(root, testDirectory('proxy'), 'velocity.toml'), 'utf8'), afterBoot)
   } finally { rmSync(root, { recursive: true, force: true }) }
 })
 

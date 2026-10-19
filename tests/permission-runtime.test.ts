@@ -5,7 +5,7 @@ import test from 'node:test'
 import { Permissions } from '../src/server/permissions'
 import { NetworkRuntime } from '../src/server/runtime'
 import { saveConfig } from '../src/server/config'
-import { defaults } from './helpers'
+import { defaults, testDirectory } from './helpers'
 
 const java = resolve('data/java/java-25/bin/java')
 const hasJdk = existsSync(java)
@@ -18,7 +18,7 @@ test('permission edits persist and reach every server as a live snapshot', async
     assert.equal(runtime.snapshot('http://localhost/').permissions.users.length, 0)
     assert.ok(runtime.snapshot('http://localhost/').servers.every((server) => server.permissionPlugin === 'pending'))
     // The panel always writes the current snapshot so servers have it on start.
-    const initial = readFileSync(resolve(root, 'servers/proxy/plugins/smol-panel/permissions.txt'), 'utf8')
+    const initial = readFileSync(resolve(root, testDirectory('proxy'), 'plugins/smol-panel/permissions.txt'), 'utf8')
     assert.equal(initial, '#smol-panel-permissions 1\nd\n')
 
     runtime.savePermissionGroup('network', { name: 'staff', weight: 10, inherits: [], permissions: [{ node: 'Staff.Node', value: true }] })
@@ -28,7 +28,7 @@ test('permission edits persist and reach every server as a live snapshot', async
     assert.deepEqual(snapshot.permissions.users[0].permissions, { 'staff.extra': false })
     // Every backend and the proxy see the same snapshot; nothing is installed yet.
     for (const id of ['proxy', 'survival', 'creative']) {
-      const file = resolve(root, `servers/${id}/plugins/smol-panel/permissions.txt`)
+      const file = resolve(root, testDirectory(id), 'plugins/smol-panel/permissions.txt')
       assert.ok(readFileSync(file, 'utf8').includes('staff.node=1'), `${id} received the snapshot`)
       assert.equal(runtime.snapshot('http://localhost/').servers.find((server) => server.id === id)!.permissionPlugin, 'pending')
     }
@@ -50,7 +50,7 @@ test('permission edits persist and reach every server as a live snapshot', async
 
     // A server added later receives the current snapshot immediately.
     runtime.addServer({ id: 'events', name: 'Events', port: 25568, maxMemory: 2048, javaVersion: 'Java 25' })
-    assert.ok(existsSync(resolve(root, 'servers/events/plugins/smol-panel/permissions.txt')))
+    assert.ok(existsSync(resolve(runtime.directory('events'), 'plugins/smol-panel/permissions.txt')))
     runtime.removeServer('events')
   } finally { await runtime.shutdown(); rmSync(root, { recursive: true, force: true }) }
 })

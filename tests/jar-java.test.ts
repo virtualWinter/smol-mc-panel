@@ -5,7 +5,7 @@ import { resolve } from 'node:path'
 import test from 'node:test'
 import { requiredJava } from '../src/server/jar-java'
 import { loadConfig, saveConfig } from '../src/server/config'
-import { defaults } from './helpers'
+import { defaults, testDirectory } from './helpers'
 import { NetworkRuntime } from '../src/server/runtime'
 
 export function fixtureJar(path: string, major: number) {
@@ -42,7 +42,7 @@ test('runtime upgrades and persists Java 25 before launching a Java-25 JAR', asy
   saveConfig(root, defaults())
   const runtime = new NetworkRuntime(root, false, false, false)
   try {
-    fixtureJar(resolve(root, 'servers/proxy/velocity.jar'), 69)
+    fixtureJar(resolve(root, testDirectory('proxy'), 'velocity.jar'), 69)
     mkdirSync(resolve(root, 'java/java-25/bin'), { recursive: true })
     const executable = resolve(root, 'java/java-25/bin/java')
     // Version-reporting fixture only: no JVM, downloads, or Minecraft launch.

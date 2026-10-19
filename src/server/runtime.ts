@@ -134,7 +134,7 @@ export class NetworkRuntime {
     const backend = setupNetwork([input])[1]
     if (this.configs.filter((server) => server.kind === 'paper').length >= 20) throw new PanelError('The network supports up to 20 Paper servers.')
     if (this.configs.some((server) => server.id === backend.id)) throw new PanelError('That server ID is already in use.')
-    if (existsSync(safePath(this.root, backend.workingDirectory))) throw new PanelError('That server directory already exists. Choose a new ID; preserved files will not be overwritten.')
+    if (existsSync(safePath(this.root, backend.workingDirectory))) throw new PanelError('That server directory already exists; preserved files will not be overwritten.')
     const next = [...this.configs, backend]
     validateNetwork(next)
     const proxy = next.find((server) => server.kind === 'velocity')!
@@ -363,6 +363,7 @@ export class NetworkRuntime {
   saveSettings(id: string, input: Partial<Server>) {
     const current = this.config(id)
     this.assertWritable(id)
+    if (input.uuid !== undefined && input.uuid !== current.uuid) throw new PanelError('The server UUID cannot be changed from the panel.')
     if (input.workingDirectory !== current.workingDirectory) throw new PanelError('The managed working directory cannot be changed from the panel.')
     const next: ServerConfig = { ...current }
     for (const key of ['name', 'address', 'javaVersion', 'jarFile', 'startupCommand', 'stopCommand'] as const) {

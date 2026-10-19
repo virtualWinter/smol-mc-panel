@@ -13,6 +13,7 @@ export interface Server {
   permissionPlugin: 'off' | 'installed' | 'pending'
   group?: string
   id: string
+  uuid: string
   name: string
   address: string
   status: string

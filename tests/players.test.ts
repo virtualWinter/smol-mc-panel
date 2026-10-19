@@ -4,7 +4,7 @@ import { resolve } from 'node:path'
 import test from 'node:test'
 import { Players, validatePlayerAction } from '../src/server/players'
 import { disablePaperWhitelist, provisionNetwork } from '../src/server/provision'
-import { defaults } from './helpers'
+import { defaults, testDirectory } from './helpers'
 
 const player = { name: 'Example', uuid: '11111111-1111-1111-1111-111111111111' }
 const other = { name: 'Other', uuid: '22222222-2222-2222-2222-222222222222' }
@@ -50,7 +50,7 @@ test('Paper whitelist is forced off during provisioning and with inactive or leg
   const root = mkdtempSync('/tmp/opencode/no-whitelist-')
   try {
     provisionNetwork(root, defaults())
-    const directory = resolve(root, 'servers/survival'), file = resolve(directory, 'server.properties')
+    const directory = resolve(root, testDirectory('survival')), file = resolve(directory, 'server.properties')
     writeFileSync(file, '# Keep this comment\nmotd=Custom\n white-list : true\nwhite-list=true\nenforce-whitelist true\n')
     const players = new Players(root)
     players.apply('survival', directory)

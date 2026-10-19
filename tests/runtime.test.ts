@@ -5,7 +5,7 @@ import test from 'node:test'
 import { NetworkRuntime } from '../src/server/runtime'
 import { proxyConfig, saveConfig } from '../src/server/config'
 import { writeText } from '../src/server/files'
-import { defaults } from './helpers'
+import { defaults, testDirectory } from './helpers'
 
 test('Paper config writes cannot re-enable whitelisting', async () => {
   const root = mkdtempSync('/tmp/opencode/whitelist-config-')
@@ -25,19 +25,24 @@ test('backends can be created and removed without deleting their files or backup
   const input = { id: 'events', name: 'Events', port: 25568, maxMemory: 2048, javaVersion: 'Java 25' }
   try {
     runtime.addServer(input)
+    const eventsDirectory = runtime.directory('events')
     assert.equal(runtime.config('events').address, '127.0.0.1:25568')
-    assert.ok(readFileSync(resolve(root, 'servers/proxy/velocity.toml'), 'utf8').includes('events = "127.0.0.1:25568"'))
-    assert.ok(readFileSync(resolve(root, 'servers/events/eula.txt'), 'utf8').includes('eula=false'))
-    assert.equal(existsSync(resolve(root, 'servers/events/server.jar')), false)
+    assert.ok(readFileSync(resolve(root, testDirectory('proxy'), 'velocity.toml'), 'utf8').includes('events = "127.0.0.1:25568"'))
+    assert.ok(readFileSync(resolve(eventsDirectory, 'eula.txt'), 'utf8').includes('eula=false'))
+    assert.equal(existsSync(resolve(eventsDirectory, 'server.jar')), false)
     assert.throws(() => runtime.addServer(input), /already in use/u)
     assert.throws(() => runtime.addServer({ ...input, id: 'collision', port: 25566 }))
     await runtime.createBackup('events')
     runtime.removeServer('events')
     assert.throws(() => runtime.config('events'), /not found/u)
-    assert.ok(existsSync(resolve(root, 'servers/events/eula.txt')))
+    assert.ok(existsSync(resolve(eventsDirectory, 'eula.txt')))
     assert.ok(existsSync(resolve(root, 'backups/events')))
-    assert.ok(!readFileSync(resolve(root, 'servers/proxy/velocity.toml'), 'utf8').includes('events'))
-    assert.throws(() => runtime.addServer(input), /directory already exists/u)
+    assert.ok(!readFileSync(resolve(root, testDirectory('proxy'), 'velocity.toml'), 'utf8').includes('events'))
+    // A re-added ID gets a fresh UUID, so it never reuses the preserved directory.
+    runtime.addServer(input)
+    assert.notEqual(runtime.directory('events'), eventsDirectory)
+    assert.ok(existsSync(resolve(eventsDirectory, 'eula.txt')))
+    runtime.removeServer('events')
     assert.throws(() => runtime.removeServer('proxy'), /cannot be removed/u)
     runtime.removeServer('creative')
     assert.throws(() => runtime.removeServer('survival'), /at least one/u)
@@ -53,10 +58,10 @@ test('config, plugin, and file writes stay allowed while the server runs; strict
     const proxy = processes.get('proxy') ?? (processes.set('proxy', { status: 'Online', logs: [], logCount: 0, intentionalStop: false, restarts: [] }), processes.get('proxy')!)
     proxy.child = { pid: process.pid }
     // While "running": file/plugin writes go through the relaxed gate.
-    mkdirSync(resolve(root, 'servers/proxy/plugins'), { recursive: true })
-    writeFileSync(resolve(root, 'servers/proxy/plugins/hot.yml'), 'cold')
+    mkdirSync(resolve(root, testDirectory('proxy'), 'plugins'), { recursive: true })
+    writeFileSync(resolve(root, testDirectory('proxy'), 'plugins/hot.yml'), 'cold')
     await runtime.withFileWrite('proxy', () => writeText(runtime.directory('proxy'), 'plugins/hot.yml', 'warm'))
-    assert.equal(readFileSync(resolve(root, 'servers/proxy/plugins/hot.yml'), 'utf8'), 'warm')
+    assert.equal(readFileSync(resolve(root, testDirectory('proxy'), 'plugins/hot.yml'), 'utf8'), 'warm')
     assert.throws(() => runtime.assertWritable('proxy'), /Stop the server/u)
     await assert.rejects(runtime.createBackup('proxy'), /Stop the server/u)
     // The relaxed gate still serializes against concurrent writes and backups.
@@ -78,13 +83,13 @@ test('new network generates secure forwarding, requires JARs and EULA, and creat
     assert.throws(() => new NetworkRuntime(root, false), /already managing/u)
     assert.equal(snapshot.servers.length, 3)
     assert.ok(snapshot.servers.every((server) => server.status === 'Offline' && !server.installed))
-    assert.ok(readFileSync(resolve(root, 'servers/proxy/velocity.toml'), 'utf8').includes('player-info-forwarding-mode = "modern"'))
+    assert.ok(readFileSync(resolve(root, testDirectory('proxy'), 'velocity.toml'), 'utf8').includes('player-info-forwarding-mode = "modern"'))
     const secret = readFileSync(resolve(root, 'forwarding.secret'), 'utf8')
-    assert.ok(readFileSync(resolve(root, 'servers/survival/config/paper-global.yml'), 'utf8').includes(secret))
-    assert.ok(readFileSync(resolve(root, 'servers/survival/server.properties'), 'utf8').includes('server-ip=127.0.0.1'))
+    assert.ok(readFileSync(resolve(root, testDirectory('survival'), 'config/paper-global.yml'), 'utf8').includes(secret))
+    assert.ok(readFileSync(resolve(root, testDirectory('survival'), 'server.properties'), 'utf8').includes('server-ip=127.0.0.1'))
     await assert.rejects(runtime.power('survival', 'Start'), /Upload server.jar/u)
     assert.equal(runtime.eulaAccepted('survival'), false)
-    writeFileSync(resolve(root, 'servers/survival/server.jar'), 'not executed')
+    writeFileSync(resolve(root, testDirectory('survival'), 'server.jar'), 'not executed')
     await assert.rejects(runtime.power('survival', 'Start'), /EULA/u)
     runtime.acceptEula('survival')
     assert.equal(runtime.eulaAccepted('survival'), true)
@@ -117,11 +122,11 @@ test('backends can be added and removed while the proxy runs through a live topo
     telemetry.latest = () => ({ proxyTopology: true })
     runtime.addServer({ id: 'events', name: 'Events', port: 25568, maxMemory: 2048, javaVersion: 'Java 25' })
     assert.deepEqual(pushed.at(-1)?.map(([id]) => id), ['survival', 'creative', 'events'])
-    assert.ok(readFileSync(resolve(root, 'servers/proxy/velocity.toml'), 'utf8').includes('events = "127.0.0.1:25568"'))
+    assert.ok(readFileSync(resolve(root, testDirectory('proxy'), 'velocity.toml'), 'utf8').includes('events = "127.0.0.1:25568"'))
 
     runtime.removeServer('creative')
     assert.deepEqual(pushed.at(-1)?.map(([id]) => id), ['survival', 'events'])
-    assert.ok(!readFileSync(resolve(root, 'servers/proxy/velocity.toml'), 'utf8').includes('creative'))
+    assert.ok(!readFileSync(resolve(root, testDirectory('proxy'), 'velocity.toml'), 'utf8').includes('creative'))
   } finally { await runtime.shutdown(); rmSync(root, { recursive: true, force: true }) }
 })
 
@@ -134,10 +139,11 @@ test('a proxy without backends keeps its empty [servers] table and reports an is
     assert.equal(state.servers.length, 1)
     assert.equal(state.servers[0].kind, 'velocity')
     assert.equal(state.servers[0].eulaAccepted, true)
-    assert.equal(existsSync(resolve(root, 'servers/survival')), false)
-    assert.ok(readFileSync(resolve(root, 'servers/proxy/velocity.toml'), 'utf8').includes('try = []'))
+    const proxyDirectory = runtime.directory('proxy')
+    assert.equal(existsSync(resolve(root, testDirectory('survival'))), false)
+    assert.ok(readFileSync(resolve(proxyDirectory, 'velocity.toml'), 'utf8').includes('try = []'))
     assert.match(state.servers[0].startupIssue!, /at least one backend/u)
-    writeFileSync(resolve(root, 'servers/proxy/velocity.jar'), 'not executed')
+    writeFileSync(resolve(proxyDirectory, 'velocity.jar'), 'not executed')
     await assert.rejects(runtime.power('proxy', 'Start'), /at least one backend/u)
   } finally { await runtime.shutdown(); rmSync(root, { recursive: true, force: true }) }
 })
