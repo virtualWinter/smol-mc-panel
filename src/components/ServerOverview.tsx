@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { Alert, Box, Button, Collapse, IconButton, InputAdornment, Stack, TextField, Typography } from '@mui/material'
+import { Alert, Box, Collapse, IconButton, InputAdornment, Stack, TextField, Typography } from '@mui/material'
 import FolderIcon from '@mui/icons-material/Folder'
 import FolderOpenIcon from '@mui/icons-material/FolderOpen'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
@@ -11,16 +11,13 @@ import LogoutOutlinedIcon from '@mui/icons-material/LogoutOutlined'
 import { logout } from '../server/auth-actions'
 import SearchIcon from '@mui/icons-material/Search'
 import SortableServerRow from './SortableServerRow'
-import { closestCenter, DndContext, KeyboardSensor, PointerSensor, useSensor, useSensors, useDroppable } from '@dnd-kit/core'
+import { closestCenter, DndContext, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable'
-import { restrictToVerticalAxis } from './sortConstraints'
 import { usePanel } from '../data/usePanel'
 import NetworkServers from './NetworkServers'
 import NetworkPlayers from './NetworkPlayers'
 import NetworkPermissions from './NetworkPermissions'
 import DroppableGroup from './DroppableGroup'
-
-interface Group { name: string; servers: ReturnType<typeof usePanel>['servers'] }
 
 export default function ServerOverview() {
   const { servers, reorderServers, saveSettings, setGroupOrder, groupOrder } = usePanel()

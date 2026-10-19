@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
-import { emptyPermissions, inheritsCycle, normalizeGroup, sanitizePermissions, serializePermissions, storeHasData, validGroupName, validPermissionNode, validPermissionUuid, type PermissionStore } from '../permission-model'
+import { emptyPermissions, inheritsCycle, normalizeGroup, sanitizePermissions, serializePermissions, validGroupName, validPermissionNode, validPermissionUuid, type PermissionStore } from '../permission-model'
 import { PanelError } from './errors'
 import { readJson, saveJson } from './json-store'
 import { safePath } from './paths'
