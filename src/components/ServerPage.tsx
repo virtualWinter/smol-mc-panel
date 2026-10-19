@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 import { Alert, Box, Button, Paper, Stack, Typography } from '@mui/material'
-import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import { usePanel } from '../data/usePanel'
 import ServerStats from './ServerStats'
 import ServerConsole from './ServerConsole'
@@ -24,7 +23,6 @@ export default function ServerPage({ serverId, page }: { serverId: string; page:
 
   return (
     <Stack spacing={3}>
-      <Button href="/" color="inherit" size="small" startIcon={<ArrowBackIcon />} sx={{ alignSelf: 'flex-start', color: 'text.secondary' }}>Network</Button>
       {error && <Alert severity="error">{error}</Alert>}
       {!server ? <Typography component="h1" variant="h4">Server not found</Typography> : (
         <>
