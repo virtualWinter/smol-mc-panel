@@ -72,6 +72,11 @@ export default function NetworkPermissions({ scope = 'network', inline = false }
 
   const sortedGroups = useMemo(() => [...store.groups].sort((a, b) => b.weight - a.weight || a.name.localeCompare(b.name)), [store.groups])
   const sortedUsers = useMemo(() => [...store.users].sort((a, b) => (a.name || a.uuid).localeCompare(b.name || b.uuid)), [store.users])
+  // The player's rank is their heaviest group; with no groups it is the default group.
+  const rankOf = (groups: string[]) => [...groups]
+    .map((name) => store.groups.find((group) => group.name === name))
+    .filter((group): group is PermissionGroup => Boolean(group))
+    .sort((a, b) => b.weight - a.weight || a.name.localeCompare(b.name))[0]?.name ?? store.defaultGroup
 
   const [open, setOpen] = useState(false)
   const [tab, setTab] = useState('groups')
@@ -327,18 +332,21 @@ export default function NetworkPermissions({ scope = 'network', inline = false }
           <List dense disablePadding sx={{ overflowY: 'auto', maxHeight: { xs: 240, md: 380 } }}>
             {filteredUsers.map((user) => {
               const selected = user.uuid === selectedUser
+              const rank = rankOf(user.groups)
               return (
                 <ListItemButton key={user.uuid} selected={selected} onClick={() => selectUser(user.uuid)} sx={{ borderLeft: 2, borderColor: selected ? 'primary.main' : 'transparent', py: 0.75, gap: 1 }}>
                   <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: colorOf(user.name || user.uuid), flexShrink: 0 }} />
                   <Box sx={{ flex: 1, minWidth: 0 }}>
                     <Typography variant="body2" noWrap>{user.name || user.uuid.slice(0, 8)}</Typography>
-                    <Typography variant="caption" color="text.secondary" noWrap sx={{ display: 'block' }}>{user.uuid}</Typography>
+                    <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
+                      <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: colorOf(rank), flexShrink: 0 }} />
+                      <Typography variant="caption" color="text.secondary" noWrap>{rank}</Typography>
+                    </Stack>
                   </Box>
-                  {user.groups.length > 0 && <Chip size="small" label={user.groups.length} sx={{ height: 18, fontSize: 10.5 }} />}
                 </ListItemButton>
               )
             })}
-            {filteredUsers.length === 0 && <Typography variant="caption" color="text.secondary" sx={{ display: 'block', p: 2 }}>No players yet.</Typography>}
+            {filteredUsers.length === 0 && <Typography variant="caption" color="text.secondary" sx={{ display: 'block', p: 2 }}>Players appear here after they first join.</Typography>}
           </List>
           <Divider />
           <Box component="form" onSubmit={(event) => { event.preventDefault(); void addPlayer() }} sx={{ p: 1.5 }}>
@@ -409,7 +417,9 @@ export default function NetworkPermissions({ scope = 'network', inline = false }
               <Box sx={{ flex: 1, minWidth: 0 }}>
                 <Typography variant="h6" sx={{ fontWeight: 600 }}>{userDraft.name || 'Player'}</Typography>
                 <Typography variant="caption" color="text.secondary" sx={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis' }}>{userDraft.uuid}</Typography>
-                <Typography variant="caption" color="text.secondary">{enabledNodes} of {totalNodes} permissions enabled</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Rank <Box component="span" sx={{ fontWeight: 600, color: 'text.primary' }}>{rankOf(userDraft.groups)}</Box> · {enabledNodes} of {totalNodes} permissions enabled
+                </Typography>
               </Box>
               <Tooltip title="Remove player"><span><IconButton disabled={busy} color="error" onClick={() => void deleteUser(userDraft.uuid)} aria-label="Remove player"><DeleteIcon fontSize="small" /></IconButton></span></Tooltip>
             </Stack>
@@ -450,7 +460,7 @@ export default function NetworkPermissions({ scope = 'network', inline = false }
         <Tab label="Players" value="players" disabled={busy} />
       </Tabs>
       <Typography variant="caption" color="text.secondary">
-        Groups decide which nodes a player has. Direct player entries take priority, while heavier groups override lighter ones. Wildcards like <code>*</code> and <code>essentials.*</code> are supported.
+        Groups decide which nodes a player has. Direct player entries take priority, while heavier groups override lighter ones. Wildcards like <code>*</code> and <code>essentials.*</code> are supported. A profile is saved when a player first joins, so their rank loads again on the proxy and every server they visit.
       </Typography>
       {pending && <Alert severity="info">The permission plugin installs the next time each server starts. Restart a running server to enforce changes.</Alert>}
       {error && <Alert severity="error">{error}</Alert>}

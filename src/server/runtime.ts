@@ -415,7 +415,12 @@ export class NetworkRuntime {
           this.minecraftVersions[config.id] = gameVersion
           saveJson(resolve(this.root, 'minecraft-versions.json'), this.minecraftVersions)
         }
-        if (agent?.players) this.playerService.remember(agent.players)
+        if (agent?.players) {
+          this.playerService.remember(agent.players)
+          // Persist a profile on join. Delivery is unchanged: the network scope is merged into
+          // the snapshot the proxy and every backend receive, so a reconnect reloads the rank.
+          if (this.permissionService.trackPlayers(agent.players)) this.refreshPermissions()
+        }
         if (!process.child?.pid) { this.usage.delete(config.id); this.playerCounts.delete(config.id); appendMetric(history.cpu, 0); appendMetric(history.ram, 0); appendMetric(history.players, 0); if (history.network) appendMetric(history.network, 0); return }
         const usage = processUsage(process.child.pid)
         const previous = this.usage.get(config.id)

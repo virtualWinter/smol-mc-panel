@@ -5,7 +5,9 @@ import { permissionPluginJar, permissionSnapshot, permissionMarker, permissionPl
 import { PanelError } from './errors'
 import { safePath } from './paths'
 import { buildPermissionPlugin, permissionSignature } from './permission-plugin'
-import { serializePermissions, storeHasData, type PermissionStore } from '../permission-model'
+import { serializePermissions, storeHasData, validPermissionUuid, type PermissionStore } from '../permission-model'
+
+const playerNamePattern = /^[a-zA-Z0-9_]{1,16}$/u
 
 /** Scopes, in precedence order (highest first): server > group > network. */
 export function scopesForServer(server: { id: string; group?: string }): string[] {
@@ -150,5 +152,30 @@ export class PermissionService {
   removeUser(scope: string, uuid: string) {
     this.store(scope).removeUser(uuid)
     this.broadcast?.()
+  }
+
+  /** Saves a profile for every player observed online, so the rank and direct nodes an admin
+   * assigned survive reconnects. Profiles live in the network scope, which is merged into the
+   * snapshot for the proxy and every backend, so a reconnect always loads them again. An
+   * existing profile keeps its groups and nodes; only the username is refreshed. Returns true
+   * when a profile was created or renamed. */
+  trackPlayers(players: { name: string; uuid: string }[]): boolean {
+    const store = this.store('network')
+    let changed = false
+    for (const player of Array.isArray(players) ? players : []) {
+      const uuid = typeof player?.uuid === 'string' ? player.uuid.trim().toLowerCase() : ''
+      const name = typeof player?.name === 'string' ? player.name : ''
+      if (!validPermissionUuid(uuid) || !playerNamePattern.test(name)) continue
+      const existing = store.store.users.find((user) => user.uuid === uuid)
+      if (existing && existing.name === name) continue
+      store.saveUser({
+        uuid,
+        name,
+        groups: existing?.groups ?? [],
+        permissions: existing ? Object.entries(existing.permissions).map(([node, value]) => ({ node, value })) : [],
+      })
+      changed = true
+    }
+    return changed
   }
 }

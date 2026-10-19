@@ -35,3 +35,35 @@ test('a server snapshot merges network, group, and server scopes with server win
     assert.ok(!service.serializeForServer({ id: 'creative' }).includes('vip.node=1'))
   } finally { rmSync(root, { recursive: true, force: true }) }
 })
+
+test('a joining player gets a profile that survives reconnects and loads on the proxy and backends', () => {
+  const root = mkdtempSync('/tmp/opencode/permission-service-')
+  try {
+    const service = new PermissionService(root)
+
+    // The first sighting saves a profile; seeing the same player again is a no-op.
+    assert.equal(service.trackPlayers([{ name: 'Steve', uuid: steve }]), true)
+    assert.equal(service.trackPlayers([{ name: 'Steve', uuid: steve }]), false)
+    assert.deepEqual(service.store('network').store.users, [{ uuid: steve, name: 'Steve', groups: [], permissions: {} }])
+
+    // A rank assigned in the editor is kept when the player rejoins under a new name.
+    service.saveGroup('network', { name: 'vip', weight: 10, inherits: [], permissions: [{ node: 'vip.fly', value: true }] })
+    service.saveUser('network', { uuid: steve, name: 'Steve', groups: ['vip'], permissions: [{ node: 'direct.node', value: true }] })
+    assert.equal(service.trackPlayers([{ name: 'Alex', uuid: steve }]), true)
+    const user = service.store('network').store.users.find((entry) => entry.uuid === steve)!
+    assert.equal(user.name, 'Alex')
+    assert.deepEqual(user.groups, ['vip'])
+    assert.deepEqual(user.permissions, { 'direct.node': true })
+
+    // The profile reaches both the proxy and every backend, so a reconnect reloads it.
+    for (const server of [{ id: 'proxy' }, { id: 'survival' }]) {
+      const snapshot = service.serializeForServer(server)
+      assert.ok(snapshot.includes(`u ${steve}`), snapshot)
+      assert.match(snapshot, /vip\.fly=1/u)
+    }
+
+    // Garbage from telemetry never creates a malformed profile.
+    assert.equal(service.trackPlayers([{ name: 'bad name', uuid: steve }, { name: 'Steve', uuid: 'not-a-uuid' }]), false)
+    assert.equal(service.store('network').store.users.length, 1)
+  } finally { rmSync(root, { recursive: true, force: true }) }
+})
