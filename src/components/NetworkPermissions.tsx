@@ -532,10 +532,11 @@ function NodeEditor({ available, rows, status, disabled, onSet, onAdd }: {
           )
         })}
       </Box>
-      <Box sx={{ px: 2, py: 1, borderTop: 1, borderColor: 'divider', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
-        <Typography variant="caption" color="text.secondary">Changes save automatically</Typography>
-        <SaveStatus status={status} />
-      </Box>
+      {status !== 'idle' && (
+        <Box sx={{ px: 2, py: 1, borderTop: 1, borderColor: 'divider', display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+          <SaveStatus status={status} />
+        </Box>
+      )}
     </>
   )
 }
