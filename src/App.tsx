@@ -4,16 +4,14 @@ import ServerPage from './components/ServerPage'
 import { dataRoot, snapshot } from './server/store'
 import { readAccount } from './server/accounts'
 import { requestContext } from './server/request-context'
-import { existsSync } from 'node:fs'
-import { resolve } from 'node:path'
-import { javaVersions, loadConfig } from './server/config'
+import { configExists, javaVersions, loadConfig } from './server/config'
 import SetupForm from './components/SetupForm'
 import LoginForm from './components/LoginForm'
 
 export default async function App({ url }: { url: string }) {
   const root = dataRoot()
   if (!readAccount(root)) {
-    const proxy = existsSync(resolve(root, 'panel.json')) ? loadConfig(root).find((server) => server.kind !== 'paper') : undefined
+    const proxy = configExists(root) ? loadConfig(root).find((server) => server.kind !== 'paper') : undefined
     return <Shell><SetupForm existingProxy={proxy?.kind === 'paper' ? undefined : proxy?.kind} javaVersions={javaVersions} /></Shell>
   }
   if (!requestContext().user) return <Shell><LoginForm /></Shell>

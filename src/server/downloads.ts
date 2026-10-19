@@ -1,9 +1,10 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync, writeSync } from 'node:fs'
+import { closeSync, existsSync, openSync, renameSync, unlinkSync, writeSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { PanelError } from './errors'
 import { safePath } from './paths'
 import { MAX_UPLOAD } from './files'
+import { readJson, saveJson } from './json-store'
 import type { DownloadProgressState } from '../types'
 
 const api = 'https://fill.papermc.io/v3/projects'
@@ -27,9 +28,10 @@ function validateSource(value: JarSource): JarSource {
 }
 
 export function installedSource(manifest: string, project: string, jarFile: string): JarSource | undefined {
-  if (!existsSync(manifest)) return
+  const stored = readJson<JarSource | undefined>(manifest, undefined)
+  if (!stored) return
   try {
-    const source = validateSource(JSON.parse(readFileSync(manifest, 'utf8')) as JarSource)
+    const source = validateSource(stored)
     if (source.project === project && source.jarFile === jarFile) return source
   } catch { /* Unknown/manual installations require an explicit latest-stable confirmation. */ }
 }
@@ -110,12 +112,10 @@ export async function reinstallJar({ directory, jarFile, project, manifest, user
     // Jenkins publishes an MD5 fingerprint, not SHA-256. Pin our verified bytes with
     // SHA-256 too, so reinstalls check the primary fingerprint.
     source.sha256 = sha256
-    mkdirSync(dirname(manifest), { recursive: true, mode: 0o700 })
-    writeFileSync(`${manifest}.tmp`, JSON.stringify(source, null, 2), { mode: 0o600 })
     report('installing', size)
     // Never truncate the existing JAR: replace it only after the full download verifies.
     renameSync(temporary, target)
-    renameSync(`${manifest}.tmp`, manifest)
+    saveJson(manifest, source)
     report('complete', size)
     return source
   } catch (error) {
@@ -124,6 +124,5 @@ export async function reinstallJar({ directory, jarFile, project, manifest, user
   } finally {
     if (descriptor !== undefined) closeSync(descriptor)
     if (existsSync(temporary)) unlinkSync(temporary)
-    if (existsSync(`${manifest}.tmp`)) unlinkSync(`${manifest}.tmp`)
   }
 }

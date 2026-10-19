@@ -7,6 +7,7 @@ test('only panel-owned documents are mirrored to Postgres', () => {
   for (const key of [
     'admin.json',
     'backup-schedules.json',
+    'forwarding.secret',
     'group-order.json',
     'known-players.json',
     'minecraft-versions.json',
@@ -20,6 +21,7 @@ test('only panel-owned documents are mirrored to Postgres', () => {
     'permission-groups/lobby.json',
     'permission-plugin/paper.json',
     'permission-servers/server-1.json',
+    'player-sync/lobby-01.json',
     'plugin-installations/server-1.json',
   ]) assert.equal(isPanelKey(key), true, key)
 
@@ -29,7 +31,6 @@ test('only panel-owned documents are mirrored to Postgres', () => {
     'servers/lobby-01/whitelist.json',
     'servers/server-1/world/players/stats/abc.json',
     'backups/network/2026-01-01.json',
-    'player-sync/lobby-01.json',
     'java/java-25/release.json',
     'processes.json',
     'unrelated.json',

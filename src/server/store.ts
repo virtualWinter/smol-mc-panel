@@ -2,8 +2,7 @@ import 'server-only'
 import { NetworkRuntime } from './runtime'
 import { prepareStorage } from './storage'
 import { requireAdmin } from './request-context'
-import { initDatabase } from './db'
-import { migrateStorage, setDataRoot } from './doc-store'
+import { bootstrapStorage, flushPanelWrites } from './doc-store'
 
 const globalStore = globalThis as typeof globalThis & {
   networkRuntime?: NetworkRuntime
@@ -17,16 +16,14 @@ export function dataRoot() {
 
 async function createRuntime(): Promise<NetworkRuntime> {
   const root = dataRoot()
-  setDataRoot(root)
-  await initDatabase()
-  await migrateStorage(root)
+  await bootstrapStorage(root)
   const network = new NetworkRuntime(root)
   globalStore.networkRuntime = network
   let stopping = false
   const stop = () => {
     if (stopping) return
     stopping = true
-    void network.shutdown().finally(() => process.exit(0))
+    void network.shutdown().then(() => flushPanelWrites()).finally(() => process.exit(0))
   }
   process.once('SIGTERM', stop)
   process.once('SIGINT', stop)

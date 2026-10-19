@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from '
 import { resolve } from 'node:path'
 import { parse as parseToml } from 'smol-toml'
 import type { ServerConfig } from './config'
+import { readPanelText, writePanelText } from './doc-store'
 import { safePath, serverDirectory } from './paths'
 
 const writeNew = (path: string, content: string) => { if (!existsSync(path)) writeFileSync(path, content, { flag: 'wx', mode: 0o600 }) }
@@ -102,8 +103,8 @@ export function syncProxyServers(root: string, proxy: ServerConfig, backends: Se
 export function provisionNetwork(root: string, servers: ServerConfig[]) {
   const proxy = servers.find((server) => server.kind !== 'paper')!
   const secretPath = resolve(root, 'forwarding.secret')
-  writeNew(secretPath, randomBytes(32).toString('hex'))
-  const secret = readFileSync(secretPath, 'utf8').trim()
+  let secret = readPanelText(secretPath, '').trim()
+  if (!secret) { secret = randomBytes(32).toString('hex'); writePanelText(secretPath, secret) }
   const backends = servers.filter((server) => server.kind === 'paper')
   for (const server of servers) {
     const directory = serverDirectory(root, server.workingDirectory)

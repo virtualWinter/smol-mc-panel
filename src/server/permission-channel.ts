@@ -1,10 +1,11 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto'
-import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync as readFileSyncFs, unlinkSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, lstatSync, mkdirSync, unlinkSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import type { Server as SocketServer, Socket } from 'node:net'
 import { resolve } from 'node:path'
 import type { ServerConfig } from './config'
 import { PanelError } from './errors'
+import { readJson, saveJson } from './json-store'
 import { safePath } from './paths'
 import type { PermissionService } from './permission-service'
 
@@ -26,19 +27,15 @@ export class PermissionChannel {
 
   private loadTokens() {
     const path = resolve(this.root, 'permission-clients', 'tokens.json')
-    try {
-      const data = JSON.parse(readFileSyncFs(path, 'utf8')) as Record<string, string>
-      for (const [k, v] of Object.entries(data)) this.tokens.set(k, v)
-    } catch { /* first run */ }
+    const data = readJson<Record<string, string>>(path, {})
+    for (const [k, v] of Object.entries(data)) this.tokens.set(k, v)
   }
 
   private saveTokens() {
-    const dir = resolve(this.root, 'permission-clients')
-    mkdirSync(dir, { recursive: true, mode: 0o700 })
-    const path = resolve(dir, 'tokens.json')
+    const path = resolve(this.root, 'permission-clients', 'tokens.json')
     const data: Record<string, string> = {}
     for (const [k, v] of this.tokens) data[k] = v
-    writeFileSync(path, JSON.stringify(data), { mode: 0o600 })
+    saveJson(path, data)
   }
 
   availablePermissions(serverId: string): string[] { return this.available.get(serverId) ?? [] }

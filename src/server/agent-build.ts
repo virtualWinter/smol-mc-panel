@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, w
 import { dirname, resolve } from 'node:path'
 import { promisify } from 'node:util'
 import { PanelError } from './errors'
+import { readJson, saveJson } from './json-store'
 import { safePath } from './paths'
 
 const execute = promisify(execFile)
@@ -45,9 +46,9 @@ export async function buildAgent(root: string, java: string, sources: Record<str
   mkdirSync(directory, { recursive: true, mode: 0o700 })
   const agentJar = safePath(directory, 'metrics-agent.jar'), bridgeJar = safePath(directory, 'metrics-bridge.jar'), record = safePath(directory, 'build.json')
   const signature = hash(JSON.stringify({ format: 1, asmHash, sources }))
-  if (existsSync(record) && existsSync(agentJar) && existsSync(bridgeJar)) {
+  const cached = readJson<{ signature: string; agentHash: string; bridgeHash: string } | undefined>(record, undefined)
+  if (cached && existsSync(agentJar) && existsSync(bridgeJar)) {
     try {
-      const cached = JSON.parse(readFileSync(record, 'utf8')) as { signature: string; agentHash: string; bridgeHash: string }
       if (cached.signature === signature && cached.agentHash === hash(readFileSync(agentJar)) && cached.bridgeHash === hash(readFileSync(bridgeJar))) return agentJar
     } catch { /* Rebuild corrupt or outdated artifacts. */ }
   }
@@ -84,7 +85,7 @@ export async function buildAgent(root: string, java: string, sources: Record<str
     await execute(resolve(bin, 'jar'), ['--create', '--file', resolve(work, 'metrics-agent.jar'), '--manifest', manifest, '-C', classes, 'cc'], { timeout: 30_000 })
     await execute(resolve(bin, 'jar'), ['--create', '--file', resolve(work, 'metrics-bridge.jar'), '-C', bridgeClasses, 'cc'], { timeout: 30_000 })
     renameSync(resolve(work, 'metrics-bridge.jar'), bridgeJar); renameSync(resolve(work, 'metrics-agent.jar'), agentJar)
-    writeFileSync(record, JSON.stringify({ signature, agentHash: hash(readFileSync(agentJar)), bridgeHash: hash(readFileSync(bridgeJar)) }), { mode: 0o600 })
+    saveJson(record, { signature, agentHash: hash(readFileSync(agentJar)), bridgeHash: hash(readFileSync(bridgeJar)) })
     return agentJar
   } catch (error) {
     if (error instanceof PanelError) throw error

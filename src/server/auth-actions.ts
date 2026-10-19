@@ -1,10 +1,9 @@
 'use server'
 
-import { existsSync } from 'node:fs'
-import { resolve } from 'node:path'
 import { createAccount, readAccount, validateCredentials, verifyPassword } from './accounts'
-import { loadConfig, saveConfig, setupNetwork } from './config'
+import { configExists, loadConfig, saveConfig, setupNetwork } from './config'
 import { acquireLock } from './lock'
+import { flushPanelWrites } from './doc-store'
 import { PanelError } from './errors'
 import { requestContext, setSession } from './request-context'
 import { provisionNetwork } from './provision'
@@ -18,7 +17,7 @@ export async function setupPanel(username: string, password: string, backends: S
   validateCredentials(username, password)
   const release = acquireLock(context.root)
   try {
-    if (existsSync(resolve(context.root, 'panel.json'))) {
+    if (configExists(context.root)) {
       if (!Array.isArray(backends) || backends.length) throw new PanelError('An existing network is being preserved. Server changes are not part of account-only setup.')
       const servers = loadConfig(context.root)
       if (servers.find((server) => server.kind !== 'paper')?.kind !== 'velocity') throw new PanelError('The existing network uses an unsupported proxy type. Existing server data will not be overwritten.')
@@ -30,6 +29,8 @@ export async function setupPanel(username: string, password: string, backends: S
     }
     const account = createAccount(context.root, username, password)
     setSession(account)
+    // Setup is a one-time critical write; wait for Postgres before responding.
+    await flushPanelWrites()
   } finally { release() }
 }
 

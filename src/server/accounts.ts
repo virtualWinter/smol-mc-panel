@@ -1,7 +1,7 @@
 import { createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { PanelError } from './errors'
+import { readJson, saveJson } from './json-store'
 
 export interface AdminAccount {
   version: 1
@@ -12,10 +12,9 @@ export interface AdminAccount {
 }
 
 export function readAccount(root: string): AdminAccount | undefined {
-  const path = resolve(root, 'admin.json')
-  if (!existsSync(path)) return
-  const account = JSON.parse(readFileSync(path, 'utf8')) as AdminAccount
-  if (account.version !== 1 || typeof account.username !== 'string' || !/^[a-f0-9]{32}$/u.test(account.salt) || !/^[a-f0-9]{128}$/u.test(account.passwordHash) || !/^[a-f0-9]{64}$/u.test(account.sessionSecret)) throw new PanelError('Invalid admin account file. Restore data/admin.json from a trusted backup.')
+  const account = readJson<AdminAccount | undefined>(resolve(root, 'admin.json'), undefined)
+  if (!account) return
+  if (account.version !== 1 || typeof account.username !== 'string' || !/^[a-f0-9]{32}$/u.test(account.salt) || !/^[a-f0-9]{128}$/u.test(account.passwordHash) || !/^[a-f0-9]{64}$/u.test(account.sessionSecret)) throw new PanelError('Invalid admin account. Restore it from a trusted backup.')
   return account
 }
 
@@ -26,11 +25,10 @@ export function validateCredentials(username: string, password: string) {
 
 export function createAccount(root: string, username: string, password: string): AdminAccount {
   validateCredentials(username, password)
+  if (readAccount(root)) throw new PanelError('An admin account already exists. Sign in instead.')
   const salt = randomBytes(16).toString('hex')
   const account: AdminAccount = { version: 1, username, salt, passwordHash: scryptSync(password, salt, 64).toString('hex'), sessionSecret: randomBytes(32).toString('hex') }
-  mkdirSync(root, { recursive: true, mode: 0o700 })
-  try { writeFileSync(resolve(root, 'admin.json'), JSON.stringify(account, null, 2), { flag: 'wx', mode: 0o600 }) }
-  catch (error) { if (error instanceof Error && 'code' in error && error.code === 'EEXIST') throw new PanelError('An admin account already exists. Sign in instead.'); throw error }
+  saveJson(resolve(root, 'admin.json'), account)
   return account
 }
 

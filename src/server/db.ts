@@ -16,8 +16,9 @@ export function isDatabaseReady(): boolean { return ready && pool !== null }
 export async function initDatabase(): Promise<void> {
   const url = databaseUrl()
   if (!url) { ready = false; return }
+  let candidate: Pool | null = null
   try {
-    const candidate = new Pool({ connectionString: url, max: 5, idleTimeoutMillis: 30_000, connectionTimeoutMillis: 5_000 })
+    candidate = new Pool({ connectionString: url, max: 5, idleTimeoutMillis: 30_000, connectionTimeoutMillis: 5_000 })
     candidate.on('error', () => { /* keep the pool alive; failed queries fall back to files */ })
     await candidate.query(`CREATE TABLE IF NOT EXISTS documents (
       key TEXT PRIMARY KEY,
@@ -28,6 +29,7 @@ export async function initDatabase(): Promise<void> {
     ready = true
   } catch {
     ready = false
+    if (candidate) await candidate.end().catch(() => undefined)
   }
 }
 
@@ -39,14 +41,15 @@ export async function readDoc<T>(key: string, fallback: T): Promise<T> {
   } catch { return fallback }
 }
 
-export async function saveDoc(key: string, value: unknown): Promise<void> {
-  if (!isDatabaseReady()) return
+export async function saveDoc(key: string, value: unknown): Promise<boolean> {
+  if (!isDatabaseReady()) return false
   try {
     await pool!.query(
       `INSERT INTO documents (key, data, updated_at) VALUES ($1, $2::jsonb, now())
        ON CONFLICT (key) DO UPDATE SET data = EXCLUDED.data, updated_at = now()`,
       [key, JSON.stringify(value)])
-  } catch { /* a failed mirror must never break a panel write */ }
+    return true
+  } catch { return false /* the caller keeps a local recovery copy instead */ }
 }
 
 export async function deleteDoc(key: string): Promise<void> {

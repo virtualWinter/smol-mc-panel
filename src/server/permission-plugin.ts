@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync 
 import { dirname, resolve } from 'node:path'
 import { promisify } from 'node:util'
 import { PanelError } from './errors'
+import { readJson, saveJson } from './json-store'
 import { safePath } from './paths'
 import { readPermissionSources } from './permission-sources'
 
@@ -25,9 +26,9 @@ export async function buildPermissionPlugin(root: string, java: string, platform
   const jar = safePath(directory, `smol-panel-${platform}.jar`), record = safePath(directory, `${platform}.json`)
   const { sources, descriptor } = readPermissionSources(platform)
   const signature = hash(JSON.stringify({ format: 1, sources, descriptor }))
-  if (existsSync(record) && existsSync(jar)) {
+  const cached = readJson<{ signature: string; jarHash: string } | undefined>(record, undefined)
+  if (cached && existsSync(jar)) {
     try {
-      const cached = JSON.parse(readFileSync(record, 'utf8')) as { signature: string; jarHash: string }
       if (cached.signature === signature && cached.jarHash === hash(readFileSync(jar))) return jar
     } catch { /* Rebuild corrupt or outdated artifacts. */ }
   }
@@ -49,7 +50,7 @@ export async function buildPermissionPlugin(root: string, java: string, platform
     // Only `cc/` ships: the compile-only platform shims must not shadow the server's own classes.
     await execute(resolve(bin, 'jar'), ['--create', '--file', resolve(work, 'plugin.jar'), '-C', classes, 'cc', '-C', classes, descriptor.path], { timeout: 30_000 })
     renameSync(resolve(work, 'plugin.jar'), jar)
-    writeFileSync(record, JSON.stringify({ signature, jarHash: hash(readFileSync(jar)) }), { mode: 0o600 })
+    saveJson(record, { signature, jarHash: hash(readFileSync(jar)) })
     return jar
   } catch (error) {
     if (error instanceof PanelError) throw error

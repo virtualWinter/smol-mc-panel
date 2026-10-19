@@ -1,13 +1,11 @@
-import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
-import { mirrorToDatabase } from './doc-store'
+import { readPanelJson, writePanelJson } from './doc-store'
 
+// Panel-owned paths are stored in Postgres (cached in memory); everything else
+// (server files, idempotent runtime state) is read from and written to disk.
 export function readJson<T>(path: string, fallback: T): T {
-  return existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) as T : fallback
+  return readPanelJson(path, fallback)
 }
 
 export function saveJson(path: string, value: unknown) {
-  writeFileSync(`${path}.tmp`, JSON.stringify(value, null, 2) + '\n', { mode: 0o600 })
-  renameSync(`${path}.tmp`, path)
-  // Keep the Postgres copy in sync (no-op for non-panel files and when unconfigured).
-  mirrorToDatabase(path, value)
+  writePanelJson(path, value)
 }

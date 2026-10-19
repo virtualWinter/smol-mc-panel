@@ -4,6 +4,7 @@ import App from '../App'
 import { authorizeRequest } from '../server/access'
 import { PanelError } from '../server/errors'
 import { dataRoot } from '../server/store'
+import { bootstrapStorage } from '../server/doc-store'
 import { readAccount, sessionFromRequest } from '../server/accounts'
 import { requests } from '../server/request-context'
 
@@ -17,6 +18,11 @@ export default server
 
 async function handleRequest(request: Request): Promise<Response> {
   const root = dataRoot()
+  try { await bootstrapStorage(root) }
+  catch (error) {
+    console.error('Panel storage unavailable', error)
+    return new Response('Panel storage is unavailable. Check the database connection and try again.', { status: 503, headers: { 'Cache-Control': 'no-store' } })
+  }
   const account = readAccount(root)
   const denied = authorizeRequest(request, Boolean(account))
   if (denied) return denied

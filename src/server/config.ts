@@ -1,7 +1,7 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import type { Server, SetupServerInput } from '../types'
 import { PanelError } from './errors'
+import { readJson, saveJson } from './json-store'
 import { rewriteProxyBind } from './provision'
 
 export type ServerConfig = Omit<Server, 'installed' | 'jarVersion' | 'minecraftVersion' | 'proxyVersion' | 'download' | 'startupIssue' | 'telemetry' | 'eulaAccepted' | 'permissionPlugin' | 'status' | 'memory' | 'players' | 'cpu' | 'logs' | 'logOffset'>
@@ -61,16 +61,16 @@ export function validateNetwork(servers: ServerConfig[]) {
 
 export function saveConfig(root: string, servers: ServerConfig[]) {
   validateNetwork(servers)
-  mkdirSync(root, { recursive: true, mode: 0o700 })
-  const path = resolve(root, 'panel.json')
-  writeFileSync(`${path}.tmp`, JSON.stringify({ version: 1, servers }, null, 2), { mode: 0o600 })
-  renameSync(`${path}.tmp`, path)
+  saveJson(resolve(root, 'panel.json'), { version: 1, servers })
+}
+
+export function configExists(root: string): boolean {
+  return readJson<unknown>(resolve(root, 'panel.json'), undefined) !== undefined
 }
 
 export function loadConfig(root: string): ServerConfig[] {
-  const path = resolve(root, 'panel.json')
-  if (!existsSync(path)) throw new PanelError('Complete the first-start setup before starting the network.')
-  const data = JSON.parse(readFileSync(path, 'utf8')) as { version: number; servers: ServerConfig[] }
+  const data = readJson<{ version: number; servers: ServerConfig[] } | undefined>(resolve(root, 'panel.json'), undefined)
+  if (!data) throw new PanelError('Complete the first-start setup before starting the network.')
   if (data.version !== 1) throw new PanelError('Unsupported network configuration version.')
   if (data.servers.some((server) => (server.kind as string) === 'bungeecord')) throw new PanelError('BungeeCord support was removed. Restore a backup or set up a Velocity network.')
   // The proxy moved to a public bind; migrate loopback-era panel.json files on first load.
