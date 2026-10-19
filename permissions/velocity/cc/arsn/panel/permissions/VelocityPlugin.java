@@ -13,13 +13,20 @@ import com.velocitypowered.api.proxy.Player;
 @Plugin(id = "smol-panel", name = "smol-panel", version = "1.0")
 public final class VelocityPlugin {
 
+  // Velocity has no permission registry, so plugins' nodes cannot be enumerated.
+  // The proxy's own built-in command permissions are the only ones we can report.
+  private static final java.util.List<String> BUILT_IN_PERMISSIONS = java.util.List.of(
+      "velocity.command.dump",
+      "velocity.command.glist",
+      "velocity.command.heap",
+      "velocity.command.info",
+      "velocity.command.plugins",
+      "velocity.command.reload",
+      "velocity.command.send",
+      "velocity.command.server");
+
   private final Permissions permissions = new Permissions();
-  private final Channel channel = new Channel(permissions, () -> {}, () -> {
-    java.util.List<String> names = new java.util.ArrayList<>();
-    // Velocity's plugin manager doesn't expose registered permissions the same way;
-    // report none for now.
-    return names;
-  });
+  private final Channel channel = new Channel(permissions, () -> {}, () -> BUILT_IN_PERMISSIONS);
 
   @Subscribe
   public void onInitialize(ProxyInitializeEvent event) {
