@@ -20,7 +20,7 @@ export class PermissionChannel {
   private available = new Map<string, string[]>()
   readonly socketPath: string
 
-  constructor(private root: string, private pidFor: (id: string) => number | undefined, private permissionService: PermissionService) {
+  constructor(private root: string, private pidFor: (id: string) => number | undefined, private permissionService: PermissionService, private serverFor: (id: string) => { id: string; group?: string } = (id) => ({ id })) {
     this.socketPath = resolve(root, 'permissions.sock')
     this.loadTokens()
   }
@@ -86,7 +86,7 @@ export class PermissionChannel {
           this.clients.get(serverId)!.add(socket)
           socket.on('close', () => { this.clients.get(serverId)?.delete(socket) })
           socket.on('error', () => { this.clients.get(serverId)?.delete(socket) })
-          this.send(socket, { type: 'snapshot', content: this.permissionService.serializeForServer(serverId) })
+          this.send(socket, { type: 'snapshot', content: this.permissionService.serializeForServer(this.serverFor(serverId)) })
           continue
         }
         try {
@@ -107,7 +107,7 @@ export class PermissionChannel {
 
   broadcast() {
     for (const [serverId, sockets] of this.clients) {
-      const frame = JSON.stringify({ type: 'snapshot', content: this.permissionService.serializeForServer(serverId) }) + '\n'
+      const frame = JSON.stringify({ type: 'snapshot', content: this.permissionService.serializeForServer(this.serverFor(serverId)) }) + '\n'
       for (const socket of [...sockets]) {
         try { socket.write(frame) } catch { socket.destroy(); sockets.delete(socket) }
       }

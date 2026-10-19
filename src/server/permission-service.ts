@@ -58,37 +58,32 @@ export class PermissionService {
   /** Whether permissions are configured (any scope has data). */
   get hasData(): boolean { return [...this.stores.keys()].some((s) => storeHasData(this.store(s).store)) }
 
-  /** Merged store for a server: applies scopes in precedence order. */
+  /** Merged store for a server: applies scopes in precedence order (server > group > network). */
   mergedStore(server: { id: string; group?: string }): PermissionStore {
     const scopes = scopesForServer(server)
-    // Start with empty, then merge from lowest to highest precedence
-    const merged: PermissionStore = { defaultGroup: 'default', groups: [], users: [] }
-    // We'll collect nodes per subject from each scope and combine
-    // Simplest: merge groups/users by name, with server > group > network precedence
-    // For now, just use the highest-precedence scope that has data
+    const groups = new Map<string, PermissionStore['groups'][number]>()
+    const users = new Map<string, PermissionStore['users'][number]>()
+    let defaultGroup = 'default'
+    // Iterate from the lowest precedence to the highest so later scopes override earlier ones.
     for (const scope of [...scopes].reverse()) {
-      const s = this.store(scope)
-      if (storeHasData(s.store)) {
-        // Merge: add groups/users from this scope
-        for (const g of s.store.groups) {
-          if (!merged.groups.some((mg) => mg.name === g.name)) merged.groups.push({ ...g })
-        }
-        for (const u of s.store.users) {
-          const existing = merged.users.find((mu) => mu.uuid === u.uuid)
-          if (!existing) merged.users.push({ ...u, permissions: { ...u.permissions } })
-          else Object.assign(existing.permissions, u.permissions)
-        }
-        if (s.store.defaultGroup && merged.defaultGroup === 'default') merged.defaultGroup = s.store.defaultGroup
+      const source = this.store(scope).store
+      if (!storeHasData(source)) continue
+      for (const group of source.groups) {
+        const existing = groups.get(group.name)
+        // Merge nodes per key so a higher scope only overrides the entries it defines.
+        groups.set(group.name, existing
+          ? { name: group.name, weight: group.weight, inherits: [...new Set([...existing.inherits, ...group.inherits])], permissions: { ...existing.permissions, ...group.permissions } }
+          : { ...group, inherits: [...group.inherits], permissions: { ...group.permissions } })
       }
+      for (const user of source.users) {
+        const existing = users.get(user.uuid)
+        users.set(user.uuid, existing
+          ? { ...user, groups: [...new Set([...existing.groups, ...user.groups])], permissions: { ...existing.permissions, ...user.permissions } }
+          : { ...user, groups: [...user.groups], permissions: { ...user.permissions } })
+      }
+      defaultGroup = source.defaultGroup || defaultGroup
     }
-    // If no scope has data, use network store (or empty)
-    if (!merged.groups.length) {
-      const ns = this.store('network')
-      merged.defaultGroup = ns.store.defaultGroup
-      merged.groups = ns.store.groups.map((g) => ({ ...g }))
-      merged.users = ns.store.users.map((u) => ({ ...u, permissions: { ...u.permissions } }))
-    }
-    return merged
+    return { defaultGroup, groups: [...groups.values()], users: [...users.values()] }
   }
 
   /** Serialized merged snapshot for a server. */
@@ -96,9 +91,8 @@ export class PermissionService {
     return serializePermissions(this.mergedStore(server))
   }
 
-  serializeForServer(serverId: string): string {
-    // Find the server config to get its group. For now, use network scope only if not found.
-    return this.serializeFor({ id: serverId })
+  serializeForServer(server: { id: string; group?: string }): string {
+    return this.serializeFor(server)
   }
 
   writeSnapshot(directory: string, server: { id: string; group?: string }) {

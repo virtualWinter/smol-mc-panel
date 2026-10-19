@@ -95,7 +95,10 @@ export class NetworkRuntime {
     this.groupOrder = readJson(resolve(root, 'group-order.json'), { order: [] }).order ?? []
     if (this.enablePermissions) {
       const manager = this.manager
-      this.permissionChannel = new PermissionChannel(root, (id) => manager.get(id).child?.pid, this.permissionService)
+      this.permissionChannel = new PermissionChannel(root, (id) => manager.get(id).child?.pid, this.permissionService, (id) => {
+        const config = this.configs.find((server) => server.id === id)
+        return { id, group: config?.group }
+      })
       void this.permissionChannel.start().catch((error) => { this.manager.log('proxy', `[Panel] Permission channel failed to start: ${error instanceof PanelError ? error.message : 'unknown error'}`) })
     }
     for (const config of this.configs) this.permissionService.writeSnapshot(this.directory(config.id), config)
@@ -520,7 +523,7 @@ export class NetworkRuntime {
       backupSchedules: structuredClone(this.backupService.schedules), backupJobs: [...this.backupJobs], s3Enabled: Boolean(this.backupService.s3),
       playerPolicy: structuredClone(this.playerService.policy), networkPlayers, plugins: Object.fromEntries(this.configs.map((s) => [s.id, this.pluginService.list(s.id)])),
       permissions: structuredClone(this.permissionService.store('network').store),
-      permissionServers: Object.fromEntries(this.configs.filter((c) => c.kind === 'paper').map((c) => [c.id, structuredClone(this.permissionService.store(`server:${c.id}`).store)])),
+      permissionServers: Object.fromEntries(this.configs.map((c) => [c.id, structuredClone(this.permissionService.store(`server:${c.id}`).store)])),
       permissionGroups: Object.fromEntries([...new Set(this.configs.filter((c) => c.group?.trim()).map((c) => c.group!.trim()))].map((g) => [g, structuredClone(this.permissionService.store(`group:${g}`).store)])),
       availablePermissions: Object.fromEntries(this.configs.map((c) => [c.id, this.permissionChannel?.availablePermissions(c.id) ?? []])),
       groupOrder: [...this.groupOrder],
