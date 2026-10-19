@@ -160,6 +160,10 @@ public final class Bridge {
             catch (Exception ignored) { }
             try { result.put("onlinePlayers", call(proxy, "getPlayerCount")); }
             catch (Exception ignored) { }
+            // The proxy's status ping is unusable when HAProxy protocol is enabled, so report the
+            // configured maximum here rather than reading it from a status query.
+            try { result.put("maxPlayers", call(call(proxy, "getConfiguration"), "getShowMaxPlayers")); }
+            catch (Exception ignored) { }
             result.put("proxyControl", true);
             result.put("proxyTopology", topologySupported());
             List<Map<String, Object>> players = new ArrayList<>();
