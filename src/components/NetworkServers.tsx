@@ -39,6 +39,7 @@ export default function NetworkServers() {
             <TextField required label="Memory (MiB)" disabled={busy} type="number" value={input.maxMemory} onChange={(e) => setInput({ ...input, maxMemory: Number(e.target.value) })} slotProps={{ htmlInput: { min: 256 } }} />
           </Box>
           <TextField select label="Java" disabled={busy} value={input.javaVersion} onChange={(e) => setInput({ ...input, javaVersion: e.target.value })}>{javaVersions.map((version) => <MenuItem key={version} value={version}>{version}</MenuItem>)}</TextField>
+          <TextField label="Group (folder)" disabled={busy} value={input.group ?? ''} onChange={(e) => setInput({ ...input, group: e.target.value })} />
         </Stack> : <>
           <TextField select label="Server" disabled={busy} value={removeId} onChange={(e) => setRemoveId(e.target.value)}>{backends.map((s) => <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>)}</TextField>
           <Typography variant="caption" color="text.secondary">Files and backups are kept.</Typography>

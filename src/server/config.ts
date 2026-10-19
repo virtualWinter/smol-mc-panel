@@ -26,6 +26,7 @@ export function setupNetwork(backends: SetupServerInput[]): ServerConfig[] {
       workingDirectory: `servers/${input.id.trim()}`, javaVersion: input.javaVersion,
       jarFile: 'server.jar', startupCommand: 'java -Xms{{MIN_MEMORY}}M -Xmx{{MAX_MEMORY}}M -jar {{JAR_FILE}} nogui',
       minMemory: 256, maxMemory: input.maxMemory, stopCommand: 'stop', autoStart: true, restartOnCrash: true,
+      ...(input.group ? { group: String(input.group).trim().slice(0, 32) } : {}),
     }
   })]
   validateNetwork(servers)

@@ -339,6 +339,7 @@ export class NetworkRuntime {
     next.minMemory = Number(input.minMemory); next.maxMemory = Number(input.maxMemory)
     if (typeof input.restartOnCrash !== 'boolean') throw new PanelError('Invalid crash recovery setting.')
     next.restartOnCrash = input.restartOnCrash
+    if (input.group !== undefined) next.group = String(input.group).trim().slice(0, 32)
     const configs = this.configs.map((server) => server.id === id ? next : server)
     validateNetwork(configs); startupArgs(next)
     if (next.address !== current.address) {

@@ -11,6 +11,7 @@ export interface Server {
   telemetry?: AgentMetrics
   eulaAccepted: boolean
   permissionPlugin: 'off' | 'installed' | 'pending'
+  group?: string
   id: string
   name: string
   address: string
@@ -38,6 +39,7 @@ export interface SetupServerInput {
   port: number
   maxMemory: number
   javaVersion: string
+  group?: string
 }
 export interface ServerFile { name: string; size: string; directory?: boolean; modified?: string }
 export interface Backup { id: string; name: string; created: string; size: string; storage?: 'local' | 's3' }

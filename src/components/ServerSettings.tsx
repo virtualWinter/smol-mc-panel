@@ -54,6 +54,7 @@ function SettingsForm({ server }: ServerProps) {
             {field('name', 'Name')}
             {field('address', 'Address', { slotProps: { input: { readOnly: true } } })}
           </Box>
+          {field('group', 'Group (folder)')}
         </Stack>
       </Paper>
       <Paper variant="outlined" sx={{ p: 2 }}>
