@@ -1,20 +1,30 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { Alert, Box, Collapse, IconButton, InputAdornment, Stack, TextField, Typography } from '@mui/material'
-import FolderIcon from '@mui/icons-material/Folder'
-import FolderOpenIcon from '@mui/icons-material/FolderOpen'
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
-import ChevronRightIcon from '@mui/icons-material/ChevronRight'
-import HubOutlinedIcon from '@mui/icons-material/HubOutlined'
+import { Alert, Box, InputAdornment, Stack, TextField, Typography } from '@mui/material'
 import SearchIcon from '@mui/icons-material/Search'
 import SortableServerRow from './SortableServerRow'
-import { closestCenter, DndContext, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
+import { closestCenter, DndContext, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { usePanel } from '../data/usePanel'
 import NetworkServers from './NetworkServers'
-import NetworkPermissions from './NetworkPermissions'
-import DroppableGroup from './DroppableGroup'
+import SortableFolder from './SortableFolder'
+import type { Server } from '../types'
+
+function grouped(servers: Server[], groupOrder: string[]) {
+  const map = new Map<string, Server[]>()
+  for (const server of servers) {
+    if (server.kind === 'velocity') continue
+    const key = server.group?.trim() ?? ''
+    if (!map.has(key)) map.set(key, [])
+    map.get(key)!.push(server)
+  }
+  const ordered: string[] = []
+  for (const name of groupOrder) if (map.has(name) && !ordered.includes(name)) ordered.push(name)
+  for (const name of [...map.keys()].sort()) if (name !== '' && !ordered.includes(name)) ordered.push(name)
+  if (map.has('')) ordered.push('')
+  return ordered.map((name) => ({ name, servers: map.get(name)! }))
+}
 
 export default function ServerOverview() {
   const { servers, networkPlayers, reorderServers, saveSettings, setGroupOrder, groupOrder } = usePanel()
@@ -23,49 +33,52 @@ export default function ServerOverview() {
   const [error, setError] = useState('')
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
 
-  const filtered = servers.filter((server) => `${server.name} ${server.address} ${server.group ?? ''}`.toLowerCase().includes(search.toLowerCase()))
-  const proxy = filtered.find((server) => server.kind === 'velocity')
-  const backends = filtered.filter((server) => server.kind !== 'velocity')
-
-  const groups = useMemo(() => {
-    const map = new Map<string, typeof servers>()
-    for (const server of backends) {
-      const key = server.group?.trim() ?? ''
-      if (!map.has(key)) map.set(key, [])
-      map.get(key)!.push(server)
-    }
-    const keys = [...map.keys()]
-    // Apply persisted folder order: known groups first (in order), then remaining alphabetically, ungrouped last.
-    const ordered: string[] = []
-    for (const g of groupOrder) if (map.has(g) && !ordered.includes(g)) ordered.push(g)
-    for (const g of keys.sort()) if (!ordered.includes(g) && g !== '') ordered.push(g)
-    if (map.has('') && !ordered.includes('')) ordered.push('')
-    return ordered.map((name) => ({ name, servers: map.get(name)! }))
-  }, [backends, groupOrder])
-
-  const groupOf = (id: string) => filtered.find((server) => server.id === id)?.group?.trim() ?? ''
+  const query = search.trim().toLowerCase()
+  const matches = (server: Server) => `${server.name} ${server.address} ${server.group ?? ''}`.toLowerCase().includes(query)
+  const proxy = servers.find((server) => server.kind === 'velocity' && matches(server))
+  const allGroups = useMemo(() => grouped(servers, groupOrder), [servers, groupOrder])
+  const groups = allGroups.map((group) => ({ ...group, servers: group.servers.filter(matches) })).filter((group) => group.servers.length > 0)
+  const folderItems = groups.filter((group) => group.name !== '').map((group) => `folder:${group.name}`)
+  const groupOf = (id: string) => servers.find((server) => server.id === id)?.group?.trim() ?? ''
   const onlinePlayers = new Set(networkPlayers.map((player) => player.uuid)).size
 
   const toggle = (name: string) => setCollapsed((current) => ({ ...current, [name]: !current[name] }))
 
-  const handleDragEnd = async ({ active, over }: { active: { id: string | number }; over: { id: string | number } | null }) => {
+  const handleDragEnd = async ({ active, over }: DragEndEvent) => {
     if (!over) return
     const activeId = String(active.id), overId = String(over.id)
     if (activeId === overId) return
-    const sourceGroup = groupOf(activeId)
-    const destGroup = overId.startsWith('group:') ? overId.slice('group:'.length) : groupOf(overId)
-    const moving = filtered.find((server) => server.id === activeId)
-    if (!moving) return
     try {
+      if (activeId.startsWith('folder:')) {
+        const from = activeId.slice('folder:'.length)
+        const to = overId.startsWith('folder:') ? overId.slice('folder:'.length)
+          : overId.startsWith('group:') ? overId.slice('group:'.length)
+          : groupOf(overId)
+        if (!from || !to || from === to) return
+        const names = allGroups.map((group) => group.name).filter(Boolean)
+        const fromIndex = names.indexOf(from), toIndex = names.indexOf(to)
+        if (fromIndex < 0 || toIndex < 0) return
+        const next = [...names]
+        const [moved] = next.splice(fromIndex, 1)
+        next.splice(toIndex, 0, moved)
+        await setGroupOrder(next)
+        return
+      }
+      const sourceGroup = groupOf(activeId)
+      const destGroup = overId.startsWith('group:') ? overId.slice('group:'.length)
+        : overId.startsWith('folder:') ? overId.slice('folder:'.length)
+        : groupOf(overId)
+      const moving = servers.find((server) => server.id === activeId)
+      if (!moving) return
       if (sourceGroup !== destGroup) await saveSettings(activeId, { ...moving, group: destGroup })
-      if (!overId.startsWith('group:')) await reorderServers(activeId, overId)
+      if (!overId.startsWith('group:') && !overId.startsWith('folder:')) await reorderServers(activeId, overId)
     } catch (error) {
       setError(String(error))
     }
   }
 
   return (
-    <Stack spacing={3}>
+    <Stack spacing={2.5}>
       <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ alignItems: { sm: 'center' }, justifyContent: 'space-between' }}>
         <Box sx={{ minWidth: 0 }}>
           <Typography component="h1" variant="h6" sx={{ fontWeight: 600 }}>Network</Typography>
@@ -86,62 +99,30 @@ export default function ServerOverview() {
         </Stack>
       </Stack>
       {error && <Alert severity="error">{error}</Alert>}
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-        <Stack spacing={2}>
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <Stack spacing={1.5}>
           {proxy && (
-            <Box sx={{ border: 1, borderColor: 'divider', borderRadius: 1, overflow: 'hidden' }}>
-              <Stack direction="row" spacing={1} sx={{ alignItems: 'center', px: 1.5, py: 1, bgcolor: 'action.hover' }}>
-                <HubOutlinedIcon fontSize="small" sx={{ color: 'text.secondary' }} />
-                <Typography variant="subtitle2" sx={{ fontWeight: 600, flex: 1 }}>Proxy</Typography>
-              </Stack>
-              <SortableContext items={[proxy.id]} strategy={verticalListSortingStrategy}>
-                <Stack spacing={1} sx={{ p: 1 }}>
-                  <SortableServerRow key={proxy.id} server={proxy} />
-                </Stack>
-              </SortableContext>
-            </Box>
+            <SortableContext items={[proxy.id]} strategy={verticalListSortingStrategy}>
+              <Box sx={{ border: 1, borderColor: 'divider', borderRadius: 1, overflow: 'hidden' }}>
+                <SortableServerRow server={proxy} reorderable={false} />
+              </Box>
+            </SortableContext>
           )}
-          {groups.map((group) => {
-            const isCollapsed = Boolean(collapsed[group.name])
-            const label = group.name === '' ? 'Ungrouped' : group.name
-            const droppableId = `group:${group.name}`
-            const index = groups.indexOf(group)
-            const moveFolder = (direction: -1 | 1) => {
-              const next = [...groups.map((g) => g.name)]
-              const target = index + direction
-              if (target < 0 || target >= next.length) return
-              ;[next[index], next[target]] = [next[target], next[index]]
-              void setGroupOrder(next).catch((error: unknown) => setError(String(error)))
-            }
-            return (
-              <DroppableGroup key={group.name === '' ? '__ungrouped' : group.name} id={droppableId}>
-                {(setNodeRef, isOver) => (
-                  <Box ref={setNodeRef} sx={{ border: 1, borderColor: isOver ? 'primary.main' : 'divider', borderRadius: 1, overflow: 'hidden', bgcolor: isOver ? 'action.selected' : 'transparent' }}>
-                    <Stack direction="row" spacing={1} sx={{ alignItems: 'center', px: 1.5, py: 1, bgcolor: 'action.hover' }}>
-                      <IconButton size="small" onClick={() => toggle(group.name)} sx={{ color: 'text.secondary' }}>{isCollapsed ? <ChevronRightIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}</IconButton>
-                      {isCollapsed ? <FolderIcon fontSize="small" sx={{ color: 'text.secondary' }} /> : <FolderOpenIcon fontSize="small" sx={{ color: 'text.secondary' }} />}
-                      <Typography variant="subtitle2" sx={{ fontWeight: 600, flex: 1, cursor: 'pointer' }} onClick={() => toggle(group.name)}>{label}</Typography>
-                      <Typography variant="caption" color="text.secondary">{group.servers.length}</Typography>
-                      {group.name !== '' && <NetworkPermissions scope={`group:${group.name}`} />}
-                      <IconButton size="small" disabled={index === 0} onClick={() => moveFolder(-1)} aria-label={`Move ${label} up`}><ChevronRightIcon fontSize="small" sx={{ transform: 'rotate(-90deg)' }} /></IconButton>
-                      <IconButton size="small" disabled={index === groups.length - 1} onClick={() => moveFolder(1)} aria-label={`Move ${label} down`}><ChevronRightIcon fontSize="small" sx={{ transform: 'rotate(90deg)' }} /></IconButton>
-                    </Stack>
-                    <Collapse in={!isCollapsed}>
-                      <SortableContext items={group.servers.map((server) => server.id)} strategy={verticalListSortingStrategy}>
-                        <Stack spacing={1} sx={{ p: 1, minHeight: 40 }}>
-                          {group.servers.map((server) => <SortableServerRow key={server.id} server={server} />)}
-                          {group.servers.length === 0 && <Typography variant="caption" color="text.secondary" sx={{ py: 1, textAlign: 'center' }}>Drop servers here</Typography>}
-                        </Stack>
-                      </SortableContext>
-                    </Collapse>
-                  </Box>
-                )}
-              </DroppableGroup>
-            )
-          })}
-          {filtered.length === 0 && <Typography color="text.secondary" sx={{ py: 4, textAlign: 'center' }}>No matches</Typography>}
+          <SortableContext items={folderItems} strategy={verticalListSortingStrategy}>
+            {groups.map((group) => (
+              <SortableFolder
+                key={group.name === '' ? '__ungrouped' : group.name}
+                name={group.name}
+                label={group.name === '' ? 'Ungrouped' : group.name}
+                servers={group.servers}
+                collapsed={Boolean(collapsed[group.name])}
+                onToggle={() => toggle(group.name)}
+              />
+            ))}
+          </SortableContext>
+          {!proxy && groups.length === 0 && <Typography color="text.secondary" sx={{ py: 4, textAlign: 'center' }}>No matches</Typography>}
         </Stack>
-        </DndContext>
+      </DndContext>
     </Stack>
   )
 }
