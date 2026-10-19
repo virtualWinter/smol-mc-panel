@@ -9,43 +9,61 @@ export function databaseUrl(): string | null {
 
 export function hasDatabase(): boolean { return Boolean(databaseUrl()) }
 
+export function isDatabaseReady(): boolean { return ready && pool !== null }
+
+// Creates the connection pool and the document table. Never throws: a bad or
+// unreachable database degrades to file-only storage instead of taking the panel down.
 export async function initDatabase(): Promise<void> {
   const url = databaseUrl()
   if (!url) { ready = false; return }
-  pool = new Pool({ connectionString: url, max: 10, idleTimeoutMillis: 30000 })
-  pool.on('error', () => { /* keep pool alive */ })
-  const client = await pool.connect()
   try {
-    await client.query(`CREATE TABLE IF NOT EXISTS documents (
+    const candidate = new Pool({ connectionString: url, max: 5, idleTimeoutMillis: 30_000, connectionTimeoutMillis: 5_000 })
+    candidate.on('error', () => { /* keep the pool alive; failed queries fall back to files */ })
+    await candidate.query(`CREATE TABLE IF NOT EXISTS documents (
       key TEXT PRIMARY KEY,
       data JSONB NOT NULL,
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )`)
+    pool = candidate
     ready = true
-  } finally { client.release() }
+  } catch {
+    ready = false
+  }
 }
 
-export function isDatabaseReady(): boolean { return ready && pool !== null }
-
 export async function readDoc<T>(key: string, fallback: T): Promise<T> {
-  if (!pool || !ready) return fallback
+  if (!isDatabaseReady()) return fallback
   try {
-    const r = await pool.query('SELECT data FROM documents WHERE key = $1', [key])
-    if (r.rows.length === 0) return fallback
-    return r.rows[0].data as T
+    const result = await pool!.query('SELECT data FROM documents WHERE key = $1', [key])
+    return result.rows.length ? result.rows[0].data as T : fallback
   } catch { return fallback }
 }
 
 export async function saveDoc(key: string, value: unknown): Promise<void> {
-  if (!pool || !ready) return
+  if (!isDatabaseReady()) return
   try {
-    await pool.query(
+    await pool!.query(
       `INSERT INTO documents (key, data, updated_at) VALUES ($1, $2::jsonb, now())
        ON CONFLICT (key) DO UPDATE SET data = EXCLUDED.data, updated_at = now()`,
       [key, JSON.stringify(value)])
-  } catch { /* ignore */ }
+  } catch { /* a failed mirror must never break a panel write */ }
+}
+
+export async function deleteDoc(key: string): Promise<void> {
+  if (!isDatabaseReady()) return
+  try { await pool!.query('DELETE FROM documents WHERE key = $1', [key]) } catch { /* ignore */ }
+}
+
+export async function listDocKeys(): Promise<string[]> {
+  if (!isDatabaseReady()) return []
+  try {
+    const result = await pool!.query('SELECT key FROM documents')
+    return result.rows.map((row) => row.key as string)
+  } catch { return [] }
 }
 
 export async function closeDatabase(): Promise<void> {
-  if (pool) { await pool.end(); pool = null; ready = false }
+  const current = pool
+  pool = null; ready = false
+  if (current) await current.end().catch(() => undefined)
 }

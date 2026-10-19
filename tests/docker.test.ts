@@ -8,7 +8,12 @@ test('Docker packaging matches the application runtime layout', () => {
   const panel = compose.services?.panel
   assert.ok(panel, 'compose declares the panel service')
   assert.equal(panel.build, '.')
-  assert.deepEqual(panel.environment, { PANEL_DATA_DIR: '/data', PANEL_ORIGIN: '${PANEL_ORIGIN:-}', PAPERMC_USER_AGENT: '${PAPERMC_USER_AGENT:-}' })
+  assert.deepEqual(panel.environment, {
+    PANEL_DATA_DIR: '/data',
+    DATABASE_URL: '${DATABASE_URL:-postgresql://panel:0T4hwsmZnGONqqT4BtwP@mc-db-bvkvva:5432/db}',
+    PANEL_ORIGIN: '${PANEL_ORIGIN:-}',
+    PAPERMC_USER_AGENT: '${PAPERMC_USER_AGENT:-}',
+  })
   const volumes = compose.volumes ?? {}
   assert.deepEqual(Object.keys(volumes), ['panel-data'])
   assert.ok(!JSON.stringify(panel.ports).includes('25565:25565'), 'proxy port publishing stays opt-in while listeners bind loopback')

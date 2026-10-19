@@ -16,7 +16,9 @@ export async function powerServer(id: string, action: 'Start' | 'Restart' | 'Sto
 export async function sendCommand(id: string, command: string) {
   const config = (await runtime()).config(id)
   if (typeof command !== 'string') throw new PanelError('Invalid command.')
-  if (config.kind === 'paper') { if (command.trim().toLowerCase().includes('whitelist on')) throw new PanelError('Whitelisting is disabled for Paper servers.') }
+  if (config.kind === 'paper') {
+    if (command.trim().toLowerCase().includes('whitelist on')) throw new PanelError('Whitelisting is disabled for Paper servers.')
+  }
   (await runtime()).manager.command(id, command)
 }
 

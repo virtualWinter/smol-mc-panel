@@ -1,68 +1,88 @@
-import { existsSync, readFileSync, readdirSync, statSync, writeFileSync, mkdirSync, renameSync } from 'node:fs'
-import { resolve, dirname, relative, join } from 'node:path'
-import { readDoc, saveDoc, isDatabaseReady, initDatabase } from './db'
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
+import { dirname, relative, resolve } from 'node:path'
+import { deleteDoc, isDatabaseReady, listDocKeys, readDoc, saveDoc } from './db'
+
+// The panel only persists its own JSON documents in Postgres. Minecraft's own
+// files (world data, ops/whitelist, plugin configs) stay on disk under
+// servers/, backups/, player-sync/ and java/, and are owned by the servers.
+const PANEL_FILES = new Set([
+  'admin.json',
+  'backup-schedules.json',
+  'group-order.json',
+  'known-players.json',
+  'minecraft-versions.json',
+  'panel.json',
+  'permissions.json',
+  'player-policy.json',
+  'proxy-versions.json',
+])
+const PANEL_DIRS = [
+  'agents/',
+  'installations/',
+  'permission-clients/',
+  'permission-groups/',
+  'permission-plugin/',
+  'permission-servers/',
+  'plugin-installations/',
+]
+
+export function isPanelKey(key: string): boolean {
+  return PANEL_FILES.has(key) || PANEL_DIRS.some((dir) => key.startsWith(dir))
+}
 
 let dataRoot: string | null = null
+
 export function setDataRoot(root: string) { dataRoot = root }
 
-export function readJson<T>(path: string, fallback: T): T {
-  return existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) as T : fallback
+// Maps an absolute file path to its document key, or null when the file is not
+// panel-owned (and therefore must never be mirrored to Postgres).
+function documentKey(path: string): string | null {
+  if (!dataRoot) return null
+  const key = relative(dataRoot, path).split('\\').join('/')
+  return key.startsWith('..') ? null : (isPanelKey(key) ? key : null)
 }
 
-export function saveJson(path: string, value: unknown) {
-  writeFileSync(`${path}.tmp`, JSON.stringify(value, null, 2) + '\n', { mode: 0o600 })
-  renameSync(`${path}.tmp`, path)
-  // Mirror to PG (fire and forget)
-  if (dataRoot && isDatabaseReady()) {
-    const key = relative(dataRoot, path).replace(/\\/g, '/')
-    void saveDoc(key, value)
-  }
+// Fire-and-forget mirror of a panel write. Failures are swallowed inside db.ts.
+export function mirrorToDatabase(path: string, value: unknown): void {
+  const key = documentKey(path)
+  if (key && isDatabaseReady()) void saveDoc(key, value)
 }
 
-// Async versions
-export async function readDocAsync<T>(key: string, fallback: T, filePath?: string): Promise<T> {
-  if (isDatabaseReady()) {
-    const v = await readDoc<T>(key, undefined as T)
-    if (v !== undefined) return v
-  }
-  if (filePath) return readJson(filePath, fallback)
-  return fallback
+function writeJsonFile(path: string, value: unknown) {
+  mkdirSync(dirname(path), { recursive: true, mode: 0o700 })
+  writeFileSync(path, JSON.stringify(value, null, 2) + '\n', { mode: 0o600 })
 }
 
-export async function saveDocAsync(key: string, value: unknown, filePath?: string): Promise<void> {
-  if (isDatabaseReady()) await saveDoc(key, value)
-  if (filePath) saveJson(filePath, value)
-}
-
-// Migrate all JSON files between PG and disk.
+// Reconciles Postgres and the data directory on startup:
+//  - drops rows that used to be migrated but aren't panel-owned,
+//  - pushes every panel-owned file to Postgres (the on-disk file is always the
+//    most recent write, since the panel writes files synchronously first),
+//  - materializes panel-owned documents that only exist in Postgres (fresh volume).
 export async function migrateStorage(root: string): Promise<void> {
   setDataRoot(root)
   if (!isDatabaseReady()) return
-  // Collect all JSON files under root
+  const existing = new Set(await listDocKeys())
+  for (const key of existing) if (!isPanelKey(key)) await deleteDoc(key)
   const files: string[] = []
-  function walk(dir: string) {
+  const walk = (dir: string) => {
     if (!existsSync(dir)) return
     for (const name of readdirSync(dir)) {
-      const p = resolve(dir, name)
-      if (statSync(p).isDirectory()) walk(p)
-      else if (name.endsWith('.json')) files.push(p)
+      const path = resolve(dir, name)
+      if (statSync(path).isDirectory()) walk(path)
+      else if (name.endsWith('.json')) files.push(path)
     }
   }
-  walk(root)
-  // For each file, sync with PG (PG wins if it has data)
+  for (const name of PANEL_FILES) files.push(resolve(root, name))
+  for (const dir of PANEL_DIRS) walk(resolve(root, dir))
   for (const file of files) {
-    const key = relative(root, file).replace(/\\/g, '/')
-    const pgData = await readDoc<unknown>(key, undefined as unknown)
-    if (pgData !== undefined) {
-      // PG has data → overwrite file
-      mkdirSync(dirname(file), { recursive: true, mode: 0o700 })
-      writeFileSync(file, JSON.stringify(pgData, null, 2) + '\n', { mode: 0o600 })
-    } else {
-      // File has data → save to PG
-      try {
-        const data = JSON.parse(readFileSync(file, 'utf8'))
-        await saveDoc(key, data)
-      } catch { /* skip invalid */ }
-    }
+    if (!existsSync(file)) continue
+    const key = relative(root, file).split('\\').join('/')
+    if (!isPanelKey(key)) continue
+    try { await saveDoc(key, JSON.parse(readFileSync(file, 'utf8'))) } catch { /* skip unreadable or invalid files */ }
+  }
+  for (const key of await listDocKeys()) {
+    if (!isPanelKey(key) || existsSync(resolve(root, key))) continue
+    const value = await readDoc<unknown>(key, undefined)
+    if (value !== undefined) writeJsonFile(resolve(root, key), value)
   }
 }
