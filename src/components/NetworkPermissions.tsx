@@ -8,7 +8,7 @@ interface NodeRow { node: string; value: boolean }
 interface GroupDraft { name: string; weight: number; inherits: string[]; isNew: boolean; nodes: NodeRow[] }
 interface UserDraft { uuid: string; name: string; groups: string[]; nodes: NodeRow[] }
 
-export default function NetworkPermissions({ scope = 'network' }: { scope?: string }) {
+export default function NetworkPermissions({ scope = 'network', inline = false }: { scope?: string; inline?: boolean }) {
   const { servers, permissions, permissionServers, permissionGroups, availablePermissions, savePermissionGroup, removePermissionGroup, setDefaultPermissionGroup, savePermissionUser, removePermissionUser, trackPermissionUser } = usePanel()
   const store = scope === 'network' ? permissions : scope.startsWith('server:') ? (permissionServers?.[scope.slice(7)] ?? permissions) : scope.startsWith('group:') ? (permissionGroups?.[scope.slice(6)] ?? permissions) : permissions
   // Available permission nodes reported by servers in this scope.
@@ -48,11 +48,7 @@ export default function NetworkPermissions({ scope = 'network' }: { scope?: stri
 
   const nodes = (rows: NodeRow[]) => rows.map((row) => ({ node: row.node.trim(), value: row.value })).filter((row) => row.node)
 
-  return <>
-    <Button size="small" onClick={() => { setOpen(true); setError(''); setNotice(''); if (!group && groups.length) editGroup(groups[0]) }}>Permissions</Button>
-    <Dialog open={open} fullWidth maxWidth="md" onClose={() => { if (!busy) setOpen(false) }}>
-      <DialogTitle>Permissions</DialogTitle>
-      <DialogContent>
+  const content = (
         <Stack spacing={2}>
           <Tabs value={tab} onChange={(_, value: string) => { setTab(value); setError(''); setNotice('') }} aria-label="Permissions"><Tab label="Groups" value="groups" disabled={busy} /><Tab label="Players" value="players" disabled={busy} /></Tabs>
           <Typography variant="caption" color="text.secondary">
@@ -108,7 +104,13 @@ export default function NetworkPermissions({ scope = 'network' }: { scope?: stri
             </Stack> : <Typography variant="body2" color="text.secondary">Players without a group entry simply get the default group.</Typography>}
           </Stack>}
         </Stack>
-      </DialogContent>
+  )
+  if (inline) return content
+  return <>
+    <Button size="small" onClick={() => { setOpen(true); setError(''); setNotice(''); if (!group && groups.length) editGroup(groups[0]) }}>Permissions</Button>
+    <Dialog open={open} fullWidth maxWidth="md" onClose={() => { if (!busy) setOpen(false) }}>
+      <DialogTitle>Permissions</DialogTitle>
+      <DialogContent>{content}</DialogContent>
       <DialogActions>
         <Button disabled={busy} onClick={() => setOpen(false)}>Close</Button>
         {tab === 'groups' && group && !group.isNew && group.name !== store.defaultGroup && <Button color="error" disabled={busy} onClick={() => { if (window.confirm(`Delete the ${group.name} group?`)) void run(async () => { await removePermissionGroup(scope, group.name); setGroup(null) }, 'Group deleted') }}>Delete</Button>}

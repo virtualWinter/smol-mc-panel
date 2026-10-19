@@ -34,8 +34,7 @@ export default function ServerPage({ serverId, page }: { serverId: string; page:
           {!server.installed && page === '' && <Alert severity="info" action={<Button href={`/${server.id}/settings`} color="inherit">Install</Button>}>Server software not installed.</Alert>}
           {server.installed && !server.eulaAccepted && page === '' && <Alert severity="info" action={<Button href={`/${server.id}/settings`} color="inherit">Review EULA</Button>}>Accept the Minecraft EULA before starting.</Alert>}
           {server.permissionPlugin === 'pending' && page === '' && <Alert severity="info">Restart to apply network permissions.</Alert>}
-          {page === '' && <NetworkPermissions scope={`server:${server.id}`} />}
-           {page === 'plugins' ? <ServerPlugins key={server.id} server={server} /> : page === 'files' ? <ServerFiles server={server} /> : page === 'backups' ? <ServerBackups server={server} /> : page === 'settings' ? <ServerSettings server={server} /> : page !== '' ? <Typography color="text.secondary">Page not found</Typography> : (
+           {page === 'plugins' ? <ServerPlugins key={server.id} server={server} /> : page === 'files' ? <ServerFiles server={server} /> : page === 'backups' ? <ServerBackups server={server} /> : page === 'settings' ? <ServerSettings server={server} /> : page === 'permissions' ? <NetworkPermissions scope={`server:${server.id}`} inline /> : page !== '' ? <Typography color="text.secondary">Page not found</Typography> : (
           <Stack spacing={2}>
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', md: 'minmax(0, 1fr) 260px' }, gap: 2 }}>
             <Box sx={{ minWidth: 0 }}><ServerConsole server={server} /></Box>
