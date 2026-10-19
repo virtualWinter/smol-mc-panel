@@ -1,7 +1,6 @@
 'use client'
 
 import { Box, Collapse, IconButton, Stack, Typography } from '@mui/material'
-import DragIndicatorIcon from '@mui/icons-material/DragIndicator'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
@@ -17,8 +16,9 @@ export default function SortableFolder({ name, label, servers, collapsed, onTogg
   collapsed: boolean
   onToggle: () => void
 }) {
-  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: `folder:${name}`, disabled: name === '' })
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: `folder:${name}`, disabled: name === '' })
   const { setNodeRef: setDroppableRef, isOver } = useDroppable({ id: `group:${name}` })
+  const dragProps = name ? { ...attributes, ...listeners, 'aria-label': `Reorder ${label}` } : {}
   const setNode = (node: HTMLElement | null) => {
     setNodeRef(node)
     setDroppableRef(node)
@@ -33,17 +33,14 @@ export default function SortableFolder({ name, label, servers, collapsed, onTogg
         bgcolor: isOver ? 'action.selected' : 'transparent',
       }}
     >
-      <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center', px: 0.75, py: 0.5, borderBottom: collapsed ? 0 : 1, borderColor: 'divider', '&:hover > .drag-handle, &:focus-within > .drag-handle': { opacity: 1 } }}>
-        {name ? (
-          <IconButton
-            className="drag-handle"
-            ref={setActivatorNodeRef} {...attributes} {...listeners}
-            aria-label={`Reorder ${label}`} size="small"
-            sx={{ opacity: isDragging ? 1 : { xs: 1, sm: 0 }, transition: 'opacity 120ms ease', color: 'text.disabled', cursor: isDragging ? 'grabbing' : 'grab', touchAction: 'none', '&:hover, &:focus-visible': { color: 'text.primary' } }}
-          >
-            <DragIndicatorIcon fontSize="small" />
-          </IconButton>
-        ) : <Box sx={{ width: 30, flexShrink: 0 }} />}
+      <Stack
+        direction="row" spacing={0.5} {...dragProps}
+        sx={{
+          alignItems: 'center', px: 0.75, py: 0.5, borderBottom: collapsed ? 0 : 1, borderColor: 'divider',
+          cursor: name ? (isDragging ? 'grabbing' : 'grab') : 'default',
+          '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: -2 },
+        }}
+      >
         <IconButton size="small" aria-label={collapsed ? `Expand ${label}` : `Collapse ${label}`} onClick={onToggle} sx={{ color: 'text.secondary' }}>
           <ExpandMoreIcon fontSize="small" sx={{ transform: collapsed ? 'rotate(-90deg)' : 'none', transition: 'transform 150ms' }} />
         </IconButton>

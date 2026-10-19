@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, Box, InputAdornment, Stack, TextField, Typography } from '@mui/material'
 import SearchIcon from '@mui/icons-material/Search'
 import SortableServerRow from './SortableServerRow'
@@ -32,6 +32,27 @@ export default function ServerOverview() {
   const [search, setSearch] = useState('')
   const [error, setError] = useState('')
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
+
+  // Rows and folder headers are draggable as a whole, so a drag ends on top of a link. Swallow the
+  // click that follows any pointer movement past the drag threshold, otherwise dragging opens a page.
+  const pointerStart = useRef<{ x: number; y: number } | null>(null)
+  useEffect(() => {
+    const onPointerDown = (event: PointerEvent) => { pointerStart.current = { x: event.clientX, y: event.clientY } }
+    const onClick = (event: MouseEvent) => {
+      const start = pointerStart.current
+      pointerStart.current = null
+      if (!start || Math.hypot(event.clientX - start.x, event.clientY - start.y) <= 5) return
+      event.preventDefault()
+      event.stopPropagation()
+    }
+    window.addEventListener('pointerdown', onPointerDown, true)
+    window.addEventListener('click', onClick, true)
+    return () => {
+      window.removeEventListener('pointerdown', onPointerDown, true)
+      window.removeEventListener('click', onClick, true)
+    }
+  }, [])
+
 
   const query = search.trim().toLowerCase()
   const matches = (server: Server) => `${server.name} ${server.address} ${server.group ?? ''}`.toLowerCase().includes(query)
