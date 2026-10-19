@@ -26,7 +26,7 @@ function SettingsForm({ server }: ServerProps) {
     setError('')
   }
   const field = (name: keyof Server, label: string, extra: TextFieldProps = {}) => (
-    <TextField required fullWidth size="small" disabled={saving || locked} label={label} value={values[name]} onChange={(event) => change(name, event.target.value)} {...extra} />
+    <TextField required fullWidth size="small" disabled={saving} label={label} value={values[name]} onChange={(event) => change(name, event.target.value)} {...extra} />
   )
   const columns = { display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }
 
@@ -37,7 +37,7 @@ function SettingsForm({ server }: ServerProps) {
         setError('Initial memory cannot exceed maximum memory.')
         return
       }
-      if (saving || locked) return
+      if (saving) return
       setSaving(true); setError(''); setSaved(false)
       try { await saveSettings(server.id, {
         ...values,
@@ -46,7 +46,7 @@ function SettingsForm({ server }: ServerProps) {
       })
       setSaved(true) } catch (error) { setError(String(error)) } finally { setSaving(false) }
     }}>
-      {locked && <Typography variant="caption" color="text.secondary">Stop the server to edit settings.</Typography>}
+      {locked && <Typography variant="caption" color="text.secondary">Memory, Java, software, startup, and crash-recovery changes apply on the next restart.</Typography>}
       <Paper variant="outlined" sx={{ p: 2 }}>
         <Stack spacing={2}>
           <Typography component="h2" variant="subtitle2">General</Typography>
@@ -87,7 +87,7 @@ function SettingsForm({ server }: ServerProps) {
             {field('minMemory', 'Initial memory (MiB)', { type: 'number', slotProps: { htmlInput: { min: 128, step: 1 } } })}
             {field('maxMemory', 'Maximum memory (MiB)', { type: 'number', slotProps: { htmlInput: { min: 128, step: 1 } } })}
           </Box>
-          <FormControlLabel control={<Switch disabled={locked || saving} checked={values.restartOnCrash} onChange={(event) => change('restartOnCrash', event.target.checked)} />} label="Restart after a crash" />
+          <FormControlLabel control={<Switch disabled={saving} checked={values.restartOnCrash} onChange={(event) => change('restartOnCrash', event.target.checked)} />} label="Restart after a crash" />
         </Stack>
       </Paper>
       <Accordion variant="outlined" disableGutters sx={{ '&:before': { display: 'none' } }}><AccordionSummary expandIcon={<ExpandMoreIcon />}><Typography variant="body2">Advanced</Typography></AccordionSummary><AccordionDetails><Stack spacing={2}>
@@ -98,7 +98,7 @@ function SettingsForm({ server }: ServerProps) {
         {field('stopCommand', 'Stop command')}
       </Stack></AccordionDetails></Accordion>
       <Stack direction="row" spacing={2} sx={{ alignItems: 'center' }}>
-        <Button type="submit" variant="contained" disabled={saving || locked}>{saving ? 'Saving…' : 'Save changes'}</Button>
+        <Button type="submit" variant="contained" disabled={saving}>{saving ? 'Saving…' : 'Save changes'}</Button>
         {error && <Typography variant="body2" color="error" role="alert">{error}</Typography>}
         {saved && <Typography variant="body2" color="text.secondary" role="status">Saved</Typography>}
       </Stack>

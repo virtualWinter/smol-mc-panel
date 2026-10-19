@@ -74,6 +74,30 @@ test('config, plugin, and file writes stay allowed while the server runs; strict
     } finally { await runtime.shutdown(); rmSync(root, { recursive: true, force: true }) }
 })
 
+test('settings can be saved while the server runs, but ports still cannot change', async () => {
+  const root = mkdtempSync('/tmp/opencode/hot-settings-')
+  saveConfig(root, defaults())
+  const runtime = new NetworkRuntime(root, false)
+  try {
+    const processes = (runtime as unknown as { manager: { processes: Map<string, Record<string, unknown> & { child?: { pid: number } }> } }).manager.processes
+    const survival = processes.get('survival') ?? (processes.set('survival', { status: 'Online', logs: [], logCount: 0, intentionalStop: false, restarts: [] }), processes.get('survival')!)
+    survival.child = { pid: process.pid }
+    runtime.saveSettings('survival', { ...runtime.config('survival'), name: 'Lobby Two', maxMemory: 6144 })
+    assert.equal(runtime.config('survival').name, 'Lobby Two')
+    assert.equal(runtime.config('survival').maxMemory, 6144)
+    const stored = JSON.parse(readFileSync(resolve(root, 'panel.json'), 'utf8')).servers.find((server: { id: string }) => server.id === 'survival')
+    assert.equal(stored.name, 'Lobby Two')
+    // Concurrent file operations and backups still exclude settings saves.
+    const internal = runtime as unknown as { writeJobs: Set<string> }
+    internal.writeJobs.add('survival')
+    assert.throws(() => runtime.saveSettings('survival', { ...runtime.config('survival') }), /Wait for active file operations/u)
+    internal.writeJobs.delete('survival')
+    // Moving a port still requires stopping the whole network.
+    assert.throws(() => runtime.saveSettings('survival', { ...runtime.config('survival'), address: '127.0.0.1:25570' }), /Stop the whole network/u)
+    survival.child = undefined
+  } finally { await runtime.shutdown(); rmSync(root, { recursive: true, force: true }) }
+})
+
 test('new network generates secure forwarding, requires JARs and EULA, and creates actual archives', async () => {
   const root = mkdtempSync('/tmp/opencode/network-runtime-')
   saveConfig(root, defaults())

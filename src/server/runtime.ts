@@ -186,7 +186,7 @@ export class NetworkRuntime {
     this.telemetry.setServers(proxy.id, topology.order, topology.servers)
   }
 
-  /** Strict gate: the server must be stopped and idle for restarts, settings, EULA, reinstalls, and backups. */
+  /** Strict gate: the server must be stopped and idle for restarts, EULA, reinstalls, and backups. */
   assertWritable(id: string) {
     this.config(id)
     const item = this.manager.get(id)
@@ -362,7 +362,7 @@ export class NetworkRuntime {
 
   saveSettings(id: string, input: Partial<Server>) {
     const current = this.config(id)
-    this.assertWritable(id)
+    if (this.backupJobs.has(id) || this.writeJobs.has(id)) throw new PanelError('Wait for active file operations or backups to finish.')
     if (input.uuid !== undefined && input.uuid !== current.uuid) throw new PanelError('The server UUID cannot be changed from the panel.')
     if (input.workingDirectory !== current.workingDirectory) throw new PanelError('The managed working directory cannot be changed from the panel.')
     const next: ServerConfig = { ...current }
