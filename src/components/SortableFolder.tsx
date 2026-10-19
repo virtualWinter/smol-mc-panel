@@ -33,12 +33,13 @@ export default function SortableFolder({ name, label, servers, collapsed, onTogg
         bgcolor: isOver ? 'action.selected' : 'transparent',
       }}
     >
-      <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center', px: 0.75, py: 0.5, borderBottom: collapsed ? 0 : 1, borderColor: 'divider' }}>
+      <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center', px: 0.75, py: 0.5, borderBottom: collapsed ? 0 : 1, borderColor: 'divider', '&:hover > .drag-handle, &:focus-within > .drag-handle': { opacity: 1 } }}>
         {name ? (
           <IconButton
+            className="drag-handle"
             ref={setActivatorNodeRef} {...attributes} {...listeners}
             aria-label={`Reorder ${label}`} size="small"
-            sx={{ color: 'text.disabled', cursor: isDragging ? 'grabbing' : 'grab', touchAction: 'none', '&:hover, &:focus-visible': { color: 'text.primary' } }}
+            sx={{ opacity: isDragging ? 1 : { xs: 1, sm: 0 }, transition: 'opacity 120ms ease', color: 'text.disabled', cursor: isDragging ? 'grabbing' : 'grab', touchAction: 'none', '&:hover, &:focus-visible': { color: 'text.primary' } }}
           >
             <DragIndicatorIcon fontSize="small" />
           </IconButton>
