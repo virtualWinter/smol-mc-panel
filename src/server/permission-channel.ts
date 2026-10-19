@@ -6,7 +6,7 @@ import { resolve } from 'node:path'
 import type { ServerConfig } from './config'
 import { PanelError } from './errors'
 import { safePath } from './paths'
-import type { Permissions } from './permissions'
+import type { PermissionService } from './permission-service'
 
 const text = (value: unknown, max: number): value is string => typeof value === 'string' && value.length >= 1 && value.length <= max && !value.includes('\0')
 
@@ -21,9 +21,9 @@ export class PermissionChannel {
   private server?: SocketServer
   private starting?: Promise<void>
   private tokens = new Map<string, string>()
-  private clients = new Set<Socket>()
+  private clients = new Map<string, Set<Socket>>()
   readonly socketPath: string
-  constructor(private root: string, private pidFor: (id: string) => number | undefined, private permissions: Permissions) {
+  constructor(private root: string, private pidFor: (id: string) => number | undefined, private permissionService: PermissionService) {
     this.socketPath = resolve(root, 'permissions.sock')
     this.loadTokens()
   }
@@ -68,12 +68,13 @@ export class PermissionChannel {
   private handleConnection(socket: Socket) {
     socket.setTimeout(10_000, () => socket.destroy())
     let buffer = ''
-    const finish = () => {
-      this.clients.add(socket)
+    const finish = (serverId: string) => {
+      if (!this.clients.has(serverId)) this.clients.set(serverId, new Set())
+      this.clients.get(serverId)!.add(socket)
       socket.setTimeout(0)
-      socket.on('close', () => this.clients.delete(socket))
-      socket.on('error', () => this.clients.delete(socket))
-      this.send(socket, { type: 'snapshot', content: this.permissions.serialize() })
+      socket.on('close', () => { this.clients.get(serverId)?.delete(socket) })
+      socket.on('error', () => { this.clients.get(serverId)?.delete(socket) })
+      this.send(socket, { type: 'snapshot', content: this.permissionService.serializeForServer(serverId) })
       socket.on('data', () => {})
     }
     socket.on('data', (chunk: Buffer) => {
@@ -83,13 +84,13 @@ export class PermissionChannel {
       const frame = buffer.slice(0, end)
       buffer = buffer.slice(end + 1)
       let data: Record<string, unknown>
-      try { data = JSON.parse(frame) as Record<string, unknown> } catch { console.error('AUTH: parse failed'); socket.destroy(); return }
-      if (data.version !== 1 || !text(data.serverId, 64) || !text(data.token, 64)) { console.error('AUTH: bad fields', data.version, data.serverId, typeof data.token); socket.destroy(); return }
+      try { data = JSON.parse(frame) as Record<string, unknown> } catch { socket.destroy(); return }
+      if (data.version !== 1 || !text(data.serverId, 64) || !text(data.token, 64)) { socket.destroy(); return }
       const expected = this.tokens.get(data.serverId as string)
-      if (!expected || (data.token as string).length !== expected.length || !timingSafeEqual(Buffer.from(expected), Buffer.from(data.token as string))) { console.error('AUTH: token mismatch', expected?.slice(0,8), (data.token as string)?.slice(0,8)); socket.destroy(); return }
+      if (!expected || (data.token as string).length !== expected.length || !timingSafeEqual(Buffer.from(expected), Buffer.from(data.token as string))) { socket.destroy(); return }
       const pid = this.pidFor(data.serverId as string)
-      if (pid !== undefined && data.pid !== pid) { console.error('AUTH: pid mismatch', pid, data.pid); socket.destroy(); return }
-      finish()
+      if (pid !== undefined && data.pid !== pid) { socket.destroy(); return }
+      finish(data.serverId as string)
     })
     socket.on('error', () => {})
   }
@@ -100,9 +101,11 @@ export class PermissionChannel {
 
   /** Pushes the current snapshot to every connected plugin. */
   broadcast() {
-    const frame = JSON.stringify({ type: 'snapshot', content: this.permissions.serialize() }) + '\n'
-    for (const socket of [...this.clients]) {
-      try { socket.write(frame) } catch { socket.destroy(); this.clients.delete(socket) }
+    for (const [serverId, sockets] of this.clients) {
+      const frame = JSON.stringify({ type: 'snapshot', content: this.permissionService.serializeForServer(serverId) }) + '\n'
+      for (const socket of [...sockets]) {
+        try { socket.write(frame) } catch { socket.destroy(); sockets.delete(socket) }
+      }
     }
   }
 
@@ -120,7 +123,7 @@ export class PermissionChannel {
 
   close() {
     this.closing = true
-    for (const socket of this.clients) socket.destroy()
+    for (const sockets of this.clients.values()) for (const socket of sockets) socket.destroy()
     this.clients.clear()
     if (this.server) {
       this.server.close()

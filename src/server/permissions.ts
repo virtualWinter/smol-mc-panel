@@ -40,13 +40,15 @@ function toNodes(permissions: { node: string; value: boolean }[] | undefined) {
 /** Groups, users, and the resolved node snapshot every Paper backend and the proxy read. */
 export class Permissions {
   store: PermissionStore
-  constructor(private root: string) {
-    this.store = sanitizePermissions(readJson(resolve(root, 'permissions.json'), emptyPermissions()))
+  private relativePath: string
+  constructor(private root: string, relativePath = 'permissions.json') {
+    this.relativePath = relativePath
+    this.store = sanitizePermissions(readJson(resolve(root, relativePath), emptyPermissions()))
   }
 
   get configured() { return true }
 
-  private persist() { saveJson(resolve(this.root, 'permissions.json'), this.store) }
+  private persist() { saveJson(resolve(this.root, this.relativePath), this.store) }
 
   saveGroup(input: PermissionGroupInput) {
     const name = typeof input?.name === 'string' ? normalizeGroup(input.name) : ''

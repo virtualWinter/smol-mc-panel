@@ -21,8 +21,8 @@ test('permission edits persist and reach every server as a live snapshot', async
     const initial = readFileSync(resolve(root, 'servers/proxy/plugins/smol-panel/permissions.txt'), 'utf8')
     assert.equal(initial, '#smol-panel-permissions 1\nd\n')
 
-    runtime.savePermissionGroup({ name: 'staff', weight: 10, inherits: [], permissions: [{ node: 'Staff.Node', value: true }] })
-    runtime.savePermissionUser({ uuid: '11111111-1111-1111-1111-111111111111', name: 'Steve', groups: ['staff'], permissions: [{ node: 'staff.extra', value: false }] })
+    runtime.savePermissionGroup('network', { name: 'staff', weight: 10, inherits: [], permissions: [{ node: 'Staff.Node', value: true }] })
+    runtime.savePermissionUser('network', { uuid: '11111111-1111-1111-1111-111111111111', name: 'Steve', groups: ['staff'], permissions: [{ node: 'staff.extra', value: false }] })
     const snapshot = runtime.snapshot('http://localhost/')
     assert.deepEqual(snapshot.permissions.groups.map((group) => group.name), ['default', 'staff'])
     assert.deepEqual(snapshot.permissions.users[0].permissions, { 'staff.extra': false })
@@ -33,19 +33,19 @@ test('permission edits persist and reach every server as a live snapshot', async
       assert.equal(runtime.snapshot('http://localhost/').servers.find((server) => server.id === id)!.permissionPlugin, 'pending')
     }
 
-    runtime.setDefaultPermissionGroup('staff')
+    runtime.setDefaultPermissionGroup('network', 'staff')
     assert.equal(runtime.snapshot('http://localhost/').permissions.defaultGroup, 'staff')
-    assert.throws(() => runtime.removePermissionGroup('staff'), /default group/u)
-    runtime.savePermissionGroup({ name: 'mod', weight: 5, inherits: ['staff'], permissions: [] })
-    assert.throws(() => runtime.savePermissionGroup({ name: 'staff', weight: 1, inherits: ['mod'], permissions: [] }), /cycle/u)
-    assert.throws(() => runtime.savePermissionGroup({ name: 'bad name', weight: 0, inherits: [], permissions: [] }), /Group names/u)
-    assert.throws(() => runtime.savePermissionUser({ uuid: 'nope', name: 'x', groups: [], permissions: [] }), /UUID/u)
-    assert.throws(() => runtime.savePermissionUser({ uuid: '11111111-1111-1111-1111-111111111111', name: 'x', groups: ['ghost'], permissions: [] }), /Unknown group/u)
-    assert.throws(() => runtime.savePermissionGroup({ name: 'perm', weight: 0, inherits: [], permissions: [{ node: 'not a node', value: true }] }), /valid permission node/u)
+    assert.throws(() => runtime.removePermissionGroup('network', 'staff'), /default group/u)
+    runtime.savePermissionGroup('network', { name: 'mod', weight: 5, inherits: ['staff'], permissions: [] })
+    assert.throws(() => runtime.savePermissionGroup('network', { name: 'staff', weight: 1, inherits: ['mod'], permissions: [] }), /cycle/u)
+    assert.throws(() => runtime.savePermissionGroup('network', { name: 'bad name', weight: 0, inherits: [], permissions: [] }), /Group names/u)
+    assert.throws(() => runtime.savePermissionUser('network', { uuid: 'nope', name: 'x', groups: [], permissions: [] }), /UUID/u)
+    assert.throws(() => runtime.savePermissionUser('network', { uuid: '11111111-1111-1111-1111-111111111111', name: 'x', groups: ['ghost'], permissions: [] }), /Unknown group/u)
+    assert.throws(() => runtime.savePermissionGroup('network', { name: 'perm', weight: 0, inherits: [], permissions: [{ node: 'not a node', value: true }] }), /valid permission node/u)
 
-    runtime.removePermissionGroup('mod')
+    runtime.removePermissionGroup('network', 'mod')
     assert.deepEqual(runtime.snapshot('http://localhost/').permissions.groups.map((group) => group.name), ['default', 'staff'])
-    runtime.removePermissionUser('11111111-1111-1111-1111-111111111111')
+    runtime.removePermissionUser('network', '11111111-1111-1111-1111-111111111111')
     assert.equal(runtime.snapshot('http://localhost/').permissions.users.length, 0)
 
     // A server added later receives the current snapshot immediately.

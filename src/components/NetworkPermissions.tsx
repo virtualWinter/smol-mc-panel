@@ -8,14 +8,15 @@ interface NodeRow { node: string; value: boolean }
 interface GroupDraft { name: string; weight: number; inherits: string[]; isNew: boolean; nodes: NodeRow[] }
 interface UserDraft { uuid: string; name: string; groups: string[]; nodes: NodeRow[] }
 
-export default function NetworkPermissions() {
-  const { servers, permissions, savePermissionGroup, removePermissionGroup, setDefaultPermissionGroup, savePermissionUser, removePermissionUser, trackPermissionUser } = usePanel()
+export default function NetworkPermissions({ scope = 'network' }: { scope?: string }) {
+  const { servers, permissions, permissionServers, permissionGroups, savePermissionGroup, removePermissionGroup, setDefaultPermissionGroup, savePermissionUser, removePermissionUser, trackPermissionUser } = usePanel()
+  const store = scope === 'network' ? permissions : scope.startsWith('server:') ? (permissionServers?.[scope.slice(7)] ?? permissions) : scope.startsWith('group:') ? (permissionGroups?.[scope.slice(6)] ?? permissions) : permissions
   const [open, setOpen] = useState(false), [tab, setTab] = useState('groups')
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [notice, setNotice] = useState('')
   const [group, setGroup] = useState<GroupDraft | null>(null), [user, setUser] = useState<UserDraft | null>(null)
   const [selectedUser, setSelectedUser] = useState(''), [newPlayer, setNewPlayer] = useState('')
 
-  const groups = permissions.groups.map((entry) => entry.name)
+  const groups = store.groups.map((entry) => entry.name)
   const pending = servers.some((server) => server.permissionPlugin === 'pending')
 
   async function run(operation: () => Promise<unknown>, message: string) {
@@ -26,13 +27,13 @@ export default function NetworkPermissions() {
   function editGroup(name: string) {
     setNotice(''); setError('')
     if (name === '__new') { setGroup({ name: '', weight: 0, inherits: [], isNew: true, nodes: [] }); return }
-    const found = permissions.groups.find((entry) => entry.name === name)
+    const found = store.groups.find((entry) => entry.name === name)
     if (found) setGroup({ name: found.name, weight: found.weight, inherits: [...found.inherits], isNew: false, nodes: Object.entries(found.permissions).map(([node, value]) => ({ node, value })) })
   }
 
   function editUser(uuid: string) {
     setNotice(''); setError(''); setSelectedUser(uuid)
-    const found = permissions.users.find((entry) => entry.uuid === uuid)
+    const found = store.users.find((entry) => entry.uuid === uuid)
     if (found) setUser({ uuid: found.uuid, name: found.name, groups: [...found.groups], nodes: Object.entries(found.permissions).map(([node, value]) => ({ node, value })) })
     else setUser(null)
   }
@@ -59,10 +60,10 @@ export default function NetworkPermissions() {
                 {groups.map((name) => <MenuItem key={name} value={name}>{name}</MenuItem>)}
                 <MenuItem value="__new">New group…</MenuItem>
               </TextField>
-              {group && !group.isNew && group.name === permissions.defaultGroup && <Chip size="small" variant="outlined" label="Default" />}
-              {group && !group.isNew && group.name !== permissions.defaultGroup && <Button disabled={busy} onClick={() => void run(() => setDefaultPermissionGroup(group.name), `${group.name} is now the default group`)}>Make default</Button>}
+              {group && !group.isNew && group.name === store.defaultGroup && <Chip size="small" variant="outlined" label="Default" />}
+              {group && !group.isNew && group.name !== store.defaultGroup && <Button disabled={busy} onClick={() => void run(() => setDefaultPermissionGroup(scope, group.name), `${group.name} is now the default group`)}>Make default</Button>}
             </Stack>
-            {group ? <Stack component="form" id="permission-group" spacing={2} onSubmit={(e) => { e.preventDefault(); const name = group.name.trim().toLowerCase(); void run(async () => { await savePermissionGroup({ name, weight: group.weight, inherits: group.inherits, permissions: nodes(group.nodes) }); setGroup({ ...group, name, isNew: false }) }, 'Group saved') }}>
+            {group ? <Stack component="form" id="permission-group" spacing={2} onSubmit={(e) => { e.preventDefault(); const name = group.name.trim().toLowerCase(); void run(async () => { await savePermissionGroup(scope, { name, weight: group.weight, inherits: group.inherits, permissions: nodes(group.nodes) }); setGroup({ ...group, name, isNew: false }) }, 'Group saved') }}>
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
                 <TextField required label="Name" disabled={busy || !group.isNew} value={group.name} onChange={(e) => setGroup({ ...group, name: e.target.value })} slotProps={{ htmlInput: { pattern: '[a-z][a-z0-9_\\-]{0,31}', maxLength: 32 } }} />
                 <TextField label="Weight" disabled={busy} type="number" value={group.weight} onChange={(e) => setGroup({ ...group, weight: Number(e.target.value) })} slotProps={{ htmlInput: { min: -1000, max: 1000 } }} />
@@ -79,14 +80,14 @@ export default function NetworkPermissions() {
           </Stack> : <Stack spacing={2}>
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ alignItems: { sm: 'center' } }}>
               <TextField select label="Player" disabled={busy} value={selectedUser} onChange={(e) => editUser(e.target.value)} sx={{ minWidth: 200 }}>
-                {permissions.users.map((entry) => <MenuItem key={entry.uuid} value={entry.uuid}>{entry.name || entry.uuid}</MenuItem>)}
+                {store.users.map((entry) => <MenuItem key={entry.uuid} value={entry.uuid}>{entry.name || entry.uuid}</MenuItem>)}
               </TextField>
-              <Stack component="form" direction="row" spacing={1} onSubmit={(e) => { e.preventDefault(); const name = newPlayer; void run(async () => { const player = await trackPermissionUser(name); setNewPlayer(''); setSelectedUser(player.uuid); setUser({ uuid: player.uuid, name: player.name, groups: [], nodes: [] }) }, 'Player added') }}>
+              <Stack component="form" direction="row" spacing={1} onSubmit={(e) => { e.preventDefault(); const name = newPlayer; void run(async () => { const player = await trackPermissionUser(scope, name); setNewPlayer(''); setSelectedUser(player.uuid); setUser({ uuid: player.uuid, name: player.name, groups: [], nodes: [] }) }, 'Player added') }}>
                 <TextField required label="Add player" disabled={busy} value={newPlayer} onChange={(e) => setNewPlayer(e.target.value)} slotProps={{ htmlInput: { pattern: '[a-zA-Z0-9_]{1,16}', maxLength: 16 } }} />
                 <Button type="submit" disabled={busy || !newPlayer}>Add</Button>
               </Stack>
             </Stack>
-            {user ? <Stack component="form" id="permission-user" spacing={2} onSubmit={(e) => { e.preventDefault(); void run(() => savePermissionUser({ uuid: user.uuid, name: user.name, groups: user.groups, permissions: nodes(user.nodes) }), 'Player saved') }}>
+            {user ? <Stack component="form" id="permission-user" spacing={2} onSubmit={(e) => { e.preventDefault(); void run(() => savePermissionUser(scope, { uuid: user.uuid, name: user.name, groups: user.groups, permissions: nodes(user.nodes) }), 'Player saved') }}>
               <Box><Typography variant="subtitle2">{user.name || 'Player'}</Typography><Typography variant="caption" color="text.secondary">{user.uuid}</Typography></Box>
               <FormControl disabled={busy}>
                 <InputLabel id="user-group-label">Groups</InputLabel>
@@ -102,9 +103,9 @@ export default function NetworkPermissions() {
       </DialogContent>
       <DialogActions>
         <Button disabled={busy} onClick={() => setOpen(false)}>Close</Button>
-        {tab === 'groups' && group && !group.isNew && group.name !== permissions.defaultGroup && <Button color="error" disabled={busy} onClick={() => { if (window.confirm(`Delete the ${group.name} group?`)) void run(async () => { await removePermissionGroup(group.name); setGroup(null) }, 'Group deleted') }}>Delete</Button>}
+        {tab === 'groups' && group && !group.isNew && group.name !== store.defaultGroup && <Button color="error" disabled={busy} onClick={() => { if (window.confirm(`Delete the ${group.name} group?`)) void run(async () => { await removePermissionGroup(scope, group.name); setGroup(null) }, 'Group deleted') }}>Delete</Button>}
         {tab === 'groups' && group && <Button variant="contained" type="submit" form="permission-group" disabled={busy || !group.name}>{busy ? 'Saving…' : 'Save group'}</Button>}
-        {tab === 'players' && user && <Button color="error" disabled={busy} onClick={() => { if (window.confirm(`Remove ${user.name || user.uuid} from permissions?`)) void run(async () => { await removePermissionUser(user.uuid); setUser(null); setSelectedUser('') }, 'Player removed') }}>Remove</Button>}
+        {tab === 'players' && user && <Button color="error" disabled={busy} onClick={() => { if (window.confirm(`Remove ${user.name || user.uuid} from permissions?`)) void run(async () => { await removePermissionUser(scope, user.uuid); setUser(null); setSelectedUser('') }, 'Player removed') }}>Remove</Button>}
         {tab === 'players' && user && <Button variant="contained" type="submit" form="permission-user" disabled={busy}>{busy ? 'Saving…' : 'Save player'}</Button>}
       </DialogActions>
     </Dialog>

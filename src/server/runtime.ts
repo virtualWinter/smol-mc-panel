@@ -22,7 +22,8 @@ import { TelemetryCollector } from './telemetry'
 import { Backups } from './backups'
 import { Plugins, searchPlugins, pluginReleases } from './plugins'
 import { Players, validatePlayerAction, type PlayerAction } from './players'
-import { Permissions, type PermissionGroupInput, type PermissionUserInput } from './permissions'
+import { PermissionService } from './permission-service'
+import type { PermissionGroupInput, PermissionUserInput } from './permissions'
 import { PermissionChannel } from './permission-channel'
 import { readJson, saveJson } from './json-store'
 import { reportedMinecraftVersion, reportedProxyVersion } from '../minecraft-version'
@@ -31,7 +32,7 @@ export class NetworkRuntime {
   private backupService: Backups
   private pluginService: Plugins
   private playerService: Players
-  private permissionService: Permissions
+  private permissionService: PermissionService
   private permissionChannel?: PermissionChannel
   private backupTimer: ReturnType<typeof setInterval>
   private closing = false
@@ -89,13 +90,13 @@ export class NetworkRuntime {
     this.telemetry = new TelemetryCollector(root, (id) => this.manager.get(id).child?.pid)
     this.pluginService = new Plugins(root)
     this.playerService = new Players(root)
-    this.permissionService = new Permissions(root)
+    this.permissionService = new PermissionService(root)
     if (this.enablePermissions) {
       const manager = this.manager
       this.permissionChannel = new PermissionChannel(root, (id) => manager.get(id).child?.pid, this.permissionService)
       void this.permissionChannel.start().catch((error) => { this.manager.log('proxy', `[Panel] Permission channel failed to start: ${error instanceof PanelError ? error.message : 'unknown error'}`) })
     }
-    for (const config of this.configs) this.permissionService.writeSnapshot(this.directory(config.id))
+    for (const config of this.configs) this.permissionService.writeSnapshot(this.directory(config.id), config)
     void this.permissionChannel?.start().catch(() => {})
     this.backupService = new Backups(root, {
       ids: () => this.configs.map((s) => s.id), directory: (id) => this.directory(id), assertIdle: (id) => this.assertWritable(id), busy: this.backupJobs,
@@ -139,7 +140,7 @@ export class NetworkRuntime {
     if (live) this.pushProxyTopology(proxy)
     this.metrics[backend.id] = emptyMetrics(false)
     this.playerService.apply(backend.id, this.directory(backend.id))
-    this.permissionService.writeSnapshot(this.directory(backend.id))
+    this.permissionService.writeSnapshot(this.directory(backend.id), backend)
     if (this.enablePermissions) { void this.ensurePermissionChannel(); this.permissionChannel?.configuration(backend, this.directory(backend.id)) }
   }
 
@@ -280,7 +281,7 @@ export class NetworkRuntime {
   private async preparePermissions(config: ServerConfig) {
     if (!this.enablePermissions) return
     await this.ensurePermissionChannel()
-    this.permissionService.writeSnapshot(this.directory(config.id))
+    this.permissionService.writeSnapshot(this.directory(config.id), config)
     const java = this.javaExecutables.get(Number(config.javaVersion.split(' ')[1]))!
     await this.permissionService.install(config.kind, this.directory(config.id), java)
     this.permissionChannel?.configuration(config, this.directory(config.id))
@@ -448,20 +449,21 @@ export class NetworkRuntime {
 
   /** Writes the resolved snapshot into every server so live changes reach running games. */
   private refreshPermissions() {
-    for (const config of this.configs) this.permissionService.writeSnapshot(this.directory(config.id))
+    for (const config of this.configs) this.permissionService.writeSnapshot(this.directory(config.id), config)
     this.permissionChannel?.broadcast()
   }
 
-  savePermissionGroup(input: PermissionGroupInput) { this.permissionService.saveGroup(input); this.refreshPermissions() }
-  removePermissionGroup(name: string) { this.permissionService.removeGroup(name); this.refreshPermissions() }
-  setDefaultPermissionGroup(name: string) { this.permissionService.setDefaultGroup(name); this.refreshPermissions() }
-  savePermissionUser(input: PermissionUserInput) { this.permissionService.saveUser(input); this.refreshPermissions() }
-  removePermissionUser(uuid: string) { this.permissionService.removeUser(uuid); this.refreshPermissions() }
+  savePermissionGroup(scope: string, input: PermissionGroupInput) { this.permissionService.saveGroup(scope, input); this.refreshPermissions() }
+  removePermissionGroup(scope: string, name: string) { this.permissionService.removeGroup(scope, name); this.refreshPermissions() }
+  setDefaultPermissionGroup(scope: string, name: string) { this.permissionService.setDefaultGroup(scope, name); this.refreshPermissions() }
+  savePermissionUser(scope: string, input: PermissionUserInput) { this.permissionService.saveUser(scope, input); this.refreshPermissions() }
+  removePermissionUser(scope: string, uuid: string) { this.permissionService.removeUser(scope, uuid); this.refreshPermissions() }
   /** Resolves a name to a UUID and starts tracking it. Existing entries are left untouched. */
-  async trackPermissionUser(name: string) {
+  async trackPermissionUser(scope: string, name: string) {
     const player = await this.playerService.identity(name)
-    if (!this.permissionService.store.users.some((user) => user.uuid === player.uuid)) {
-      this.permissionService.saveUser({ uuid: player.uuid, name: player.name, groups: [], permissions: [] })
+    const store = this.permissionService.store(scope)
+    if (!store.store.users.some((user) => user.uuid === player.uuid)) {
+      this.permissionService.saveUser(scope, { uuid: player.uuid, name: player.name, groups: [], permissions: [] })
       this.refreshPermissions()
     }
     return player
@@ -509,7 +511,9 @@ export class NetworkRuntime {
     return { servers, files, filePath, backups: Object.fromEntries(this.configs.map((config) => [config.id, this.backupService.list(config.id)])), metrics: structuredClone(this.metrics), javaVersions,
       backupSchedules: structuredClone(this.backupService.schedules), backupJobs: [...this.backupJobs], s3Enabled: Boolean(this.backupService.s3),
       playerPolicy: structuredClone(this.playerService.policy), networkPlayers, plugins: Object.fromEntries(this.configs.map((s) => [s.id, this.pluginService.list(s.id)])),
-      permissions: structuredClone(this.permissionService.store),
+      permissions: structuredClone(this.permissionService.store('network').store),
+      permissionServers: Object.fromEntries(this.configs.filter((c) => c.kind === 'paper').map((c) => [c.id, structuredClone(this.permissionService.store(`server:${c.id}`).store)])),
+      permissionGroups: Object.fromEntries([...new Set(this.configs.filter((c) => c.group?.trim()).map((c) => c.group!.trim()))].map((g) => [g, structuredClone(this.permissionService.store(`group:${g}`).store)])),
     }
   }
 

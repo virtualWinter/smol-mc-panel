@@ -48,9 +48,9 @@ export async function installPlugin(id: string, source: PluginProject['source'],
 export async function removePlugin(id: string, source: PluginProject['source'], project: string) { await runtime().removePlugin(id, source, project) }
 export async function managePlayer(action: PlayerAction, name: string) { await runtime().managePlayer(action, name) }
 
-export async function savePermissionGroup(input: PermissionGroupInput) { runtime().savePermissionGroup(input) }
-export async function removePermissionGroup(name: string) { runtime().removePermissionGroup(name) }
-export async function setDefaultPermissionGroup(name: string) { runtime().setDefaultPermissionGroup(name) }
-export async function savePermissionUser(input: PermissionUserInput) { runtime().savePermissionUser(input) }
-export async function removePermissionUser(uuid: string) { runtime().removePermissionUser(uuid) }
-export async function trackPermissionUser(name: string) { return runtime().trackPermissionUser(name) }
+export async function savePermissionGroup(scope: string, input: PermissionGroupInput) { runtime().savePermissionGroup(scope, input) }
+export async function removePermissionGroup(scope: string, name: string) { runtime().removePermissionGroup(scope, name) }
+export async function setDefaultPermissionGroup(scope: string, name: string) { runtime().setDefaultPermissionGroup(scope, name) }
+export async function savePermissionUser(scope: string, input: PermissionUserInput) { runtime().savePermissionUser(scope, input) }
+export async function removePermissionUser(scope: string, uuid: string) { runtime().removePermissionUser(scope, uuid) }
+export async function trackPermissionUser(scope: string, name: string) { return runtime().trackPermissionUser(scope, name) }

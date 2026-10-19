@@ -94,6 +94,8 @@ export interface PanelState {
   networkPlayers: NetworkPlayer[]
   plugins: Record<string, InstalledPlugin[]>
   permissions: PermissionStore
+  permissionServers: Record<string, PermissionStore>
+  permissionGroups: Record<string, PermissionStore>
   filePath: string
   javaVersions: string[]
   servers: Server[]
