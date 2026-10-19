@@ -7,7 +7,7 @@ import type { TextFieldProps } from '@mui/material'
 import DownloadProgress from './DownloadProgress'
 
 function SettingsForm({ server }: ServerProps) {
-  const { saveSettings, acceptEula, reinstallServer, javaVersions } = usePanel()
+  const { saveSettings, reinstallServer, javaVersions } = usePanel()
   const [values, setValues] = useState(server)
   const [previousJava, setPreviousJava] = useState(server.javaVersion)
   if (previousJava !== server.javaVersion) {
@@ -72,13 +72,6 @@ function SettingsForm({ server }: ServerProps) {
           {((server.download && !server.download.label?.startsWith('Java')) || reinstalling) && <DownloadProgress progress={reinstalling && !downloadActive ? { phase: 'resolving', received: 0, total: 0, bytesPerSecond: 0 } : server.download ?? { phase: 'resolving', received: 0, total: 0, bytesPerSecond: 0 }} />}
         </Stack>
       </Paper>
-      {server.kind === 'paper' && !server.eulaAccepted && <Paper variant="outlined" sx={{ p: 2 }}>
-        <Stack spacing={1.5} sx={{ alignItems: 'flex-start' }}>
-          <Typography component="h2" variant="subtitle2">Minecraft EULA</Typography>
-          <Typography variant="body2" color="text.secondary">Required before the server can start.</Typography>
-          <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}><Button variant="outlined" disabled={locked || saving} onClick={() => { if (window.confirm('Have you read and do you agree to the Minecraft EULA?')) void acceptEula(server.id).catch((error: unknown) => setError(String(error))) }}>Accept EULA</Button><Button href="https://aka.ms/MinecraftEULA" target="_blank" rel="noopener noreferrer" sx={{ color: 'text.secondary' }}>Read</Button></Stack>
-        </Stack>
-      </Paper>}
       <Paper variant="outlined" sx={{ p: 2 }}>
         <Stack spacing={2}>
           <Typography component="h2" variant="subtitle2">Runtime</Typography>

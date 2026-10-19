@@ -45,7 +45,7 @@ test('first-start velocity setup creates the explicitly selected proxy and backe
     const lobbyDirectory = resolve(root, servers[1].workingDirectory)
     const proxyDirectory = resolve(root, servers[0].workingDirectory)
     assert.ok(existsSync(resolve(lobbyDirectory, 'server.properties')))
-    assert.equal(readFileSync(resolve(lobbyDirectory, 'eula.txt'), 'utf8').includes('eula=false'), true)
+    assert.equal(readFileSync(resolve(lobbyDirectory, 'eula.txt'), 'utf8').includes('eula=true'), true)
     assert.equal(existsSync(resolve(lobbyDirectory, 'server.jar')), false)
     const config = readFileSync(resolve(proxyDirectory, 'velocity.toml'), 'utf8')
     assert.ok(config.includes('lobby = "127.0.0.1:25566"'))

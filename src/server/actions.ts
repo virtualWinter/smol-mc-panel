@@ -25,7 +25,6 @@ export async function sendCommand(id: string, command: string) {
 export async function saveSettings(id: string, input: Partial<Server>) { (await runtime()).saveSettings(id, input) }
 export async function reorderServers(activeId: string, overId: string) { (await runtime()).reorder(activeId, overId) }
 export async function setGroupOrder(order: string[]) { (await runtime()).setGroupOrder(order) }
-export async function acceptEula(id: string) { (await runtime()).acceptEula(id) }
 export async function reinstallServer(id: string) { await (await runtime()).reinstall(id) }
 export async function addServer(input: SetupServerInput) { (await runtime()).addServer(input) }
 export async function removeServer(id: string) { (await runtime()).removeServer(id) }

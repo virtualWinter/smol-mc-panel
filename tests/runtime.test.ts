@@ -28,7 +28,7 @@ test('backends can be created and removed without deleting their files or backup
     const eventsDirectory = runtime.directory('events')
     assert.equal(runtime.config('events').address, '127.0.0.1:25568')
     assert.ok(readFileSync(resolve(root, testDirectory('proxy'), 'velocity.toml'), 'utf8').includes('events = "127.0.0.1:25568"'))
-    assert.ok(readFileSync(resolve(eventsDirectory, 'eula.txt'), 'utf8').includes('eula=false'))
+    assert.ok(readFileSync(resolve(eventsDirectory, 'eula.txt'), 'utf8').includes('eula=true'))
     assert.equal(existsSync(resolve(eventsDirectory, 'server.jar')), false)
     assert.throws(() => runtime.addServer(input), /already in use/u)
     assert.throws(() => runtime.addServer({ ...input, id: 'collision', port: 25566 }))
@@ -98,7 +98,7 @@ test('settings can be saved while the server runs, but ports still cannot change
   } finally { await runtime.shutdown(); rmSync(root, { recursive: true, force: true }) }
 })
 
-test('new network generates secure forwarding, requires JARs and EULA, and creates actual archives', async () => {
+test('new network generates secure forwarding, requires JARs, accepts the EULA automatically, and creates actual archives', async () => {
   const root = mkdtempSync('/tmp/opencode/network-runtime-')
   saveConfig(root, defaults())
   const runtime = new NetworkRuntime(root, false)
@@ -112,11 +112,8 @@ test('new network generates secure forwarding, requires JARs and EULA, and creat
     assert.ok(readFileSync(resolve(root, testDirectory('survival'), 'config/paper-global.yml'), 'utf8').includes(secret))
     assert.ok(readFileSync(resolve(root, testDirectory('survival'), 'server.properties'), 'utf8').includes('server-ip=127.0.0.1'))
     await assert.rejects(runtime.power('survival', 'Start'), /Upload server.jar/u)
-    assert.equal(runtime.eulaAccepted('survival'), false)
-    writeFileSync(resolve(root, testDirectory('survival'), 'server.jar'), 'not executed')
-    await assert.rejects(runtime.power('survival', 'Start'), /EULA/u)
-    runtime.acceptEula('survival')
     assert.equal(runtime.eulaAccepted('survival'), true)
+    assert.ok(readFileSync(resolve(root, testDirectory('survival'), 'eula.txt'), 'utf8').includes('eula=true'))
     runtime.reorder('creative', 'proxy')
     assert.equal(JSON.parse(readFileSync(resolve(root, 'panel.json'), 'utf8')).servers[0].id, 'creative')
     await runtime.createBackup('survival')

@@ -32,6 +32,20 @@ export function disablePaperWhitelist(directory: string) {
   return updated !== text
 }
 
+/** The panel accepts the Minecraft EULA on the operator's behalf; keep the file in sync for existing servers too. */
+export function acceptPaperEula(directory: string) {
+  const file = safePath(directory, 'eula.txt')
+  if (!existsSync(file)) {
+    writeNew(file, '# Accepted automatically by the panel. https://aka.ms/MinecraftEULA\neula=true\n')
+    return
+  }
+  const text = readFileSync(file, 'utf8')
+  const updated = /^[ \t]*eula(?:[ \t]*[=:][ \t]*|[ \t]+).*/mu.test(text)
+    ? text.replace(/^[ \t]*eula(?:[ \t]*[=:][ \t]*|[ \t]+).*/gmu, 'eula=true')
+    : `${text.endsWith('\n') || !text ? '' : '\n'}eula=true\n`
+  syncFile(file, text, updated)
+}
+
 /** Points the existing proxy bind at a new address without touching any other line. */
 export function rewriteProxyBind(root: string, proxy: ServerConfig) {
   const file = resolve(serverDirectory(root, proxy.workingDirectory), 'velocity.toml')
@@ -113,7 +127,7 @@ export function provisionNetwork(root: string, servers: ServerConfig[]) {
       writeNew(resolve(directory, 'forwarding.secret'), secret)
       writeNew(resolve(directory, 'velocity.toml'), `config-version = "2.8"\nbind = "${server.address}"\nmotd = "A Minecraft network"\nshow-max-players = 100\nonline-mode = true\nplayer-info-forwarding-mode = "modern"\nforwarding-secret-file = "forwarding.secret"\nping-passthrough = "DISABLED"\n\n[servers]\n${backends.map((backend) => `${backend.id} = "${backend.address}"`).join('\n')}\ntry = [${backends.length ? JSON.stringify(backends[0].id) : ''}]\n\n[forced-hosts]\n`)
     } else {
-      writeNew(resolve(directory, 'eula.txt'), '# Review https://aka.ms/MinecraftEULA before accepting.\neula=false\n')
+      acceptPaperEula(directory)
       writeNew(resolve(directory, 'server.properties'), `server-ip=127.0.0.1\nserver-port=${server.address.split(':')[1]}\nonline-mode=false\nenforce-secure-profile=false\nmax-players=20\nenable-status=true\nenable-query=false\nenable-rcon=false\ngamemode=${server.id === 'creative' ? 'creative' : 'survival'}\nmotd=${server.name}\n`)
       mkdirSync(resolve(directory, 'config'), { recursive: true })
       disablePaperWhitelist(directory)

@@ -7,7 +7,7 @@ import { listDirectory } from './files'
 import { appendMetric, emptyMetrics, processUsage, queryPlayers } from './metrics'
 import { safePath, serverDirectory } from './paths'
 import { ProcessManager } from './process-manager'
-import { disablePaperWhitelist, provisionNetwork } from './provision'
+import { acceptPaperEula, disablePaperWhitelist, provisionNetwork } from './provision'
 import { startupArgs } from './startup'
 import type { DownloadProgressState, MetricHistory, PanelState, Server, SetupServerInput, PluginProject } from '../types'
 import { acquireLock } from './lock'
@@ -186,7 +186,7 @@ export class NetworkRuntime {
     this.telemetry.setServers(proxy.id, topology.order, topology.servers)
   }
 
-  /** Strict gate: the server must be stopped and idle for restarts, EULA, reinstalls, and backups. */
+  /** Strict gate: the server must be stopped and idle for restarts, reinstalls, and backups. */
   assertWritable(id: string) {
     this.config(id)
     const item = this.manager.get(id)
@@ -228,7 +228,7 @@ export class NetworkRuntime {
 
   private checkAssets(config: ServerConfig) {
     if (!this.installed(config.id)) throw new PanelError(`Upload ${config.jarFile} in Files before starting this server.`)
-    if (!this.eulaAccepted(config.id)) throw new PanelError('Review and accept the Minecraft EULA in Settings before starting Paper.')
+    if (config.kind === 'paper') acceptPaperEula(this.directory(config.id))
     const issue = proxyStartupIssue(config.kind, this.directory(config.id))
     if (issue) throw new PanelError(issue)
     startupArgs(config)
@@ -320,14 +320,13 @@ export class NetworkRuntime {
     }
   }
 
-  /** Installs software the panel has never installed, so a freshly created network is ready
-   * without a manual Reinstall. A missing JAR that has an install manifest is left alone: that
-   * is a deliberate removal. Downloads run in the background and never block the panel; a
-   * failed install is logged and retried on the next start. */
+  /** Installs software for every server whose configured JAR is missing, so a network is ready
+   * without a manual Reinstall: a fresh install, a replaced panel volume, or a JAR removed from
+   * disk all repair themselves. Existing uploads are never overwritten. Downloads run in the
+   * background and never block the panel; a failed install is logged and retried on the next start. */
   private async installEligible() {
     for (const config of this.configs) {
       if (this.closing || this.installed(config.id)) continue
-      if (existsSync(resolve(this.root, 'installations', `${config.id}.json`))) continue
       await this.installServer(config.id)
     }
   }
@@ -396,12 +395,6 @@ export class NetworkRuntime {
   setGroupOrder(order: string[]) {
     this.groupOrder = [...new Set(order.map((g) => String(g).trim()).filter(Boolean))]
     saveJson(resolve(this.root, 'group-order.json'), { order: this.groupOrder })
-  }
-
-  acceptEula(id: string) {
-    this.assertWritable(id)
-    if (this.config(id).kind !== 'paper' || this.manager.get(id).child) throw new PanelError('Stop the Paper server before accepting the EULA.')
-    writeFileSync(safePath(this.directory(id), 'eula.txt'), '# Accepted through the panel. https://aka.ms/MinecraftEULA\neula=true\n', { mode: 0o600 })
   }
 
   async reinstall(id: string) {
